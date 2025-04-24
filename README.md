@@ -12,4 +12,5 @@ https://github.com/klionsky123/dmk_etl_dag2/blob/main/diagrams/Covered-ETL-Use-c
 Metadata db schema : 
 https://github.com/klionsky123/dmk_etl_dag2/blob/main/metadata-db-schema.jpg
 
-
+AirFlow graph:
+https://github.com/klionsky123/dmk_etl_dag2/blob/main/diagrams/Airflow-graph.jpg
