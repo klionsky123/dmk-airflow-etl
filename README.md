@@ -9,3 +9,7 @@ Airflow is used for scheduling & ETL processing.
 Covered ETL Use cases:
 https://github.com/klionsky123/dmk_etl_dag2/blob/main/diagrams/Covered-ETL-Use-cases2.jpg
 
+Metadata db schema : 
+https://github.com/klionsky123/dmk_etl_dag2/blob/main/metadata-db-schema.jpg
+
+
