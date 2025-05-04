@@ -39,8 +39,9 @@
 The set of ETL meatadata tables, the 'brain' of the system, includes job & job tasks definitions, clients/data sources configurations as well as logs.
 It provides support for 
 - Full/incremental extracts based on incremental dates.
-- Data Lineage
-- E (Extract) only, or TL (Transform & Load) only jobs
+- Data Lineage.
+- E (Extract) only, or TL (Transform & Load) only jobs.
+- Storage of Extract sql queries as well as tracking of stored procs (aka 'scripts') used in Transform & Load steps.
 - 'Large' and 'Small' client data sets/data sources resulting  in the different approaches for performance.
 - Making specific job tasks active/inactive without affecting the job or other job tasks for that job.
 - On/off fuctionality for deletion of the temp data structures during Extract step, which is helpfull during debugging/research.
