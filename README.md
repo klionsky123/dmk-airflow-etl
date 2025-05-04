@@ -6,6 +6,9 @@ MS SQL server is a destination server. It contains:
      
 Airflow is used for scheduling & ETL processing.
 
+Extract part is done via python modules. Both Transform & Load steps are implemented via stored procedures.
+
+
 Covered ETL Use cases:
 https://github.com/klionsky123/dmk_etl_dag2/blob/main/diagrams/Covered-ETL-Use-cases2.jpg
 
