@@ -14,10 +14,12 @@ Extract part is done via python modules. Both Transform & Load steps are impleme
 <br/>Metadata tables contain job & job tasks definitions, clients/data sources configurations as well as logs.
 <br/>
 <img src="diagrams/metadata-db-schema.jpg" alt="Example" width="500" hight="300"/>
-
+<br/>
 Covered ETL Use cases:
 <br/>
 <img src="diagrams/Covered-ETL-Use-cases2.jpg" alt="Example" width="500" hight="100"/>
-
+<br/><br/>
 AirFlow graph:
-https://github.com/klionsky123/dmk_etl_dag2/blob/main/diagrams/Airflow-graph.jpg
+<br/>
+<img src="diagrams/Airflow-graph.jpg" alt="Example" width="500" hight="300"/>
+
