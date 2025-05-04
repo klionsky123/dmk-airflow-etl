@@ -4,7 +4,7 @@
 ## Main Features
 
 - Contains stand-alone fully functional set of metadata tables, and stored procs for ETL support.
-- Extracts sample data from various data sources (flat files, RDBMS, REST API)
+- Extracts sample data from various data sources (flat files, RDBMS, REST API) with emphasis on performance.
 - Loads and transforms data using SQL stored procs
 - Scheduled via Airflow
 
@@ -49,12 +49,21 @@ It provides support for
 ### ETL-Metadata-tables schema 
 <br/>
 <img src="diagrams/metadata-db-schema.jpg" alt="Example" width="500" hight="300"/>
-<br/>
-Covered ETL Use cases:
+
+### Covered Use cases:
 <br/>
 <img src="diagrams/Covered-ETL-Use-cases2.jpg" alt="Example" width="500" hight="100"/>
-<br/><br/>
-AirFlow graph:
+
+### AirFlow graph:
 <br/>
 <img src="diagrams/Airflow-graph.jpg" alt="Example" width="500" hight="300"/>
+
+---
+
+## Road Map
+
+- Add Use cases for streaming data (Kafka), Parque files (AWS)
+- Add support for PostgresSQL metadata store (currently, MS SQL Server only)
+
+
 
