@@ -8,6 +8,7 @@ Airflow is used for scheduling & ETL processing.
 
 Extract part is done via python modules. Both Transform & Load steps are implemented via stored procedures.
 
+<img src="diagrams/Project-architecture.jpg" alt="Example" width="500" hight="300"/>
 
 Covered ETL Use cases:
 https://github.com/klionsky123/dmk_etl_dag2/blob/main/diagrams/Covered-ETL-Use-cases2.jpg
