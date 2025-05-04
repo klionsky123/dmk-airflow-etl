@@ -16,7 +16,8 @@ Extract part is done via python modules. Both Transform & Load steps are impleme
 <img src="diagrams/metadata-db-schema.jpg" alt="Example" width="500" hight="300"/>
 
 Covered ETL Use cases:
-https://github.com/klionsky123/dmk_etl_dag2/blob/main/diagrams/Covered-ETL-Use-cases2.jpg
+<br/>
+<img src="diagrams/Covered-ETL-Use-cases2.jpg" alt="Example" width="500" hight="100"/>
 
 AirFlow graph:
 https://github.com/klionsky123/dmk_etl_dag2/blob/main/diagrams/Airflow-graph.jpg
