@@ -3,7 +3,7 @@
 ---
 ## Main Features
 
-- Contains stand-alone fully functional set of metadata tables, and stored procs for ETL.
+- Contains stand-alone fully functional set of metadata tables, and stored procs for ETL support.
 - Extracts sample data from various data sources (flat files, RDBMS, REST API)
 - Loads and transforms data using SQL stored procs
 - Scheduled via Airflow
@@ -32,9 +32,21 @@
 <br/>
 <img src="diagrams/Project-architecture.jpg" alt="Example" width="500" hight="300"/>
 
+---
 
-<br/><br/>Meatadata tables for ETL jobs. This is a 'brain' of the system.
-<br/>Metadata tables contain job & job tasks definitions, clients/data sources configurations as well as logs.
+## ETL-Metadata-tables Features
+
+The set of ETL meatadata tables, the 'brain' of the system, includes job & job tasks definitions, clients/data sources configurations as well as logs.
+It provides support for 
+- Full/incremental extracts based on incremental dates.
+- Data Lineage
+- E (Extract) only, or TL (Transform & Load) only jobs
+- 'Large' and 'Small' client data sets/data sources resulting  in the different approaches for performance.
+- Making specific job tasks active/inactive without affecting the job or other job tasks for that job.
+- On/off fuctionality for deletion of the temp data structures during Extract step, which is helpfull during debugging/research.
+- Full logging (in addition to Apache Airlfow logging).
+
+### ETL-Metadata-tables schema 
 <br/>
 <img src="diagrams/metadata-db-schema.jpg" alt="Example" width="500" hight="300"/>
 <br/>
