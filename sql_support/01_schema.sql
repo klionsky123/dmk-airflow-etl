@@ -1,6 +1,10 @@
-use dmk_stage_db
+use dmk_prod_stage
 go
 
+/*
+Script to create 'stage' metadata tables.
+
+*/
 IF NOT EXISTS (
     SELECT 1
     FROM sys.schemas
@@ -38,21 +42,35 @@ IF NOT EXISTS (
 BEGIN
     EXEC('CREATE SCHEMA raw')
 END
+go
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.schemas
+    WHERE name = 'load'
+)
+BEGIN
+    EXEC('CREATE SCHEMA load')
+END
+
 --------------------------
 go
---drop table if exists metadata.job_scheduler
+
+drop table if exists metadata.log_dtl
+drop table if exists metadata.log_header
 drop table if exists metadata.job_inst_task
 drop table if exists metadata.job_inst
 drop table if exists metadata.job_task
 drop table if exists metadata.job
 drop table if exists metadata.tbl
 drop table if exists metadata.conn_str
-drop table if exists metadata.conn_str_type
+drop table if exists metadata.conn_api
 drop table if exists metadata.date_source
-
+drop table if exists metadata.sql_script
+go
 create table metadata.data_source(
  data_source_id int identity not null
 ,data_source_name varchar(256) not null
+,[data_source_type] [varchar](256) NOT NULL default 'db' CHECK ([data_source_type] IN ('api', 'db', 'file')) -- enforce type,
 ,descr varchar(max) null
 ,date_created smalldatetime not null default getdate()
 ,date_updated smalldatetime null
@@ -60,21 +78,64 @@ create table metadata.data_source(
 ,CONSTRAINT metadata_data_source_UQ UNIQUE (data_source_name)
 )
 
-create table metadata.conn_str_type(
- conn_str_type_id int identity not null
-,conn_str_type_name varchar(256) not null
+create table metadata.sql_script(
+ sql_script_id int identity not null
+,is_stored_proc bit null default 1
+,sql_text varchar(max) not null
 ,descr varchar(max) null
 ,date_created smalldatetime not null default getdate()
 ,date_updated smalldatetime null
-,CONSTRAINT metadata_conn_str_type_PK PRIMARY KEY (conn_str_type_id)
-,CONSTRAINT metadata_conn_str_type_UQ UNIQUE (conn_str_type_name)
+,CONSTRAINT metadata_sql_script_PK PRIMARY KEY (sql_script_id)
 )
+
+
+CREATE TABLE [metadata].[conn_api] (
+    conn_api_id INT IDENTITY(1,1) PRIMARY KEY,
+	conn_api_name varchar(256) not null CONSTRAINT metadata_conn_api_UQ UNIQUE (conn_api_name),
+	data_source_id int not null CONSTRAINT metadata_conn_api_FK1 FOREIGN KEY REFERENCES metadata.data_source(data_source_id),
+
+	-- foreign key to a parent conn_api (if token must be fetched)
+	parent_conn_api_id INT NULL CONSTRAINT metadata_conn_api_FK2 FOREIGN KEY REFERENCES metadata.conn_api(conn_api_id),  
+    api_url VARCHAR(1024) NOT NULL,
+	http_method varchar(16) null,
+
+    -- API Key or Token
+    api_key VARCHAR(255) NULL,
+    need_token BIT NOT NULL DEFAULT 0,
+    username VARCHAR(128) NULL,
+    pass VARCHAR(128) NULL,
+
+    -- Optional JSON payload (for POST calls or static params)
+    payload_json VARCHAR(MAX) NULL,
+
+    -- Pagination handling
+    pagination_type VARCHAR(50) NULL, -- e.g. 'page', 'offset', 'cursor', 'none'
+    page_param_name VARCHAR(50) NULL DEFAULT 'page',
+    per_page_param_name VARCHAR(50) NULL DEFAULT 'per_page',
+    page_size INT NULL DEFAULT 100,
+	max_pages int null,
+	output_file_path varchar(1000) null,
+	chunk_size int null,
+
+    -- Cursor pagination support
+    cursor_param_name VARCHAR(50) NULL,
+    cursor_path VARCHAR(255) NULL, -- JSON path to extract next cursor from response
+
+    -- Filters or incremental sync
+    use_incremental BIT NOT NULL DEFAULT 0,
+    modified_since_param VARCHAR(50) NULL,
+    last_sync_time smalldatetime NULL,
+
+    descr VARCHAR(255) NULL,
+	date_created smalldatetime not null default getdate(),
+	date_updated smalldatetime null
+)
+
 
 create table metadata.conn_str(
 	 conn_str_id int identity not null
 	,conn_str_name varchar(256) not null
 	,parent_conn_str_id int null		/* for api key dependency */
-	,conn_str_type_id int not null CONSTRAINT metadata_conn_str_FK1 FOREIGN KEY REFERENCES metadata.conn_str_type(conn_str_type_id)
 	,data_source_id int not null CONSTRAINT metadata_conn_str_FK2 FOREIGN KEY REFERENCES metadata.data_source(data_source_id)
 	,username varchar(128) null
 	,pass varchar(128) null
@@ -82,8 +143,6 @@ create table metadata.conn_str(
 	,[database_name] varchar(128) null
 	,conn_str varchar(max) null
 	,file_path varchar(1000) null
-	--,api_key varchar(255) null
-	--,payload_json varchar(max) null
 	,descr varchar(max) null
 	,date_created smalldatetime not null default getdate()
 	,date_updated smalldatetime null
@@ -128,17 +187,18 @@ create table metadata.job_task(
 ,job_id int not null CONSTRAINT metadata_job_task_FK1 FOREIGN KEY REFERENCES metadata.job(job_id)
 ,is_active bit not null default 1
 ,job_task_name varchar(128) null
-,etl_step varchar(1) null /* values: E or T or L */
+,etl_step varchar(4) not null default 'NONE' /* values: E or T or L */
 ,step_seq int not null default 1
---,sql_type varchar(32) null
-,sql_text varchar(max) null
-,conn_str_id int not null CONSTRAINT metadata_job_task_FK2 FOREIGN KEY REFERENCES metadata.conn_str(conn_str_id)
+,sql_script_id int null CONSTRAINT metadata_job_task_FK6 FOREIGN KEY REFERENCES metadata.sql_script(sql_script_id)
+,conn_api_id int null CONSTRAINT metadata_job_task_FK5 FOREIGN KEY REFERENCES metadata.conn_api(conn_api_id)
+,conn_type varchar(16) not null default 'db' check (conn_type in ('db', 'api','file') )
+,conn_str_id int null CONSTRAINT metadata_job_task_FK2 FOREIGN KEY REFERENCES metadata.conn_str(conn_str_id)
 ,src_tbl_id int not null CONSTRAINT metadata_job_task_FK3 FOREIGN KEY REFERENCES metadata.tbl(tbl_id)
 ,tgt_tbl_id int not null CONSTRAINT metadata_job_task_FK4 FOREIGN KEY REFERENCES metadata.tbl(tbl_id)
 ,date_created smalldatetime not null default getdate()
 ,date_updated smalldatetime null
 ,CONSTRAINT metadata_job_task_PK PRIMARY KEY (job_task_id)
-,CONSTRAINT metadata_job_task_UQ UNIQUE (job_id, step_seq)
+,CONSTRAINT metadata_job_task_UQ UNIQUE (job_id, etl_step,step_seq)
 )
 go
 
@@ -148,7 +208,7 @@ create table metadata.job_inst(
 ,etl_steps varchar(4) null
 ,is_full_load bit not null default 1
 ,del_temp_data bit not null default 1 /* for all tasks to conditionally delete temp table (for small datasets)/CSV file (for large datasets) */
-,job_status varchar(16) not null check (job_status in ('failed', 'running','succeeded')) 
+,job_status varchar(16) not null check (job_status in ('failed', 'running','succeeded', 'started')) 
 ,job_start_date smalldatetime null
 ,job_end_date smalldatetime null
 ,date_created smalldatetime not null default getdate()
@@ -161,6 +221,7 @@ create table metadata.job_inst_task(
  job_inst_task_id int identity not null
 ,job_task_id int not null CONSTRAINT metadata_job_inst_task_FK2 FOREIGN KEY REFERENCES metadata.job_task(job_task_id)
 ,job_inst_id int not null CONSTRAINT metadata_job_inst_task_FK1 FOREIGN KEY REFERENCES metadata.job_inst(job_inst_id)
+,etl_step varchar(4) not null /* values: E or T or L */
 ,step_seq int not null
 ,task_start_date smalldatetime null
 ,task_end_date smalldatetime null
@@ -168,41 +229,9 @@ create table metadata.job_inst_task(
 ,date_created smalldatetime not null default getdate()
 ,date_updated smalldatetime null
 ,CONSTRAINT metadata_job_inst_task_PK PRIMARY KEY (job_inst_task_id)
-,CONSTRAINT metadata_job_inst_task_UQ UNIQUE (job_inst_id, step_seq)
+,CONSTRAINT metadata_job_inst_task_UQ UNIQUE (job_inst_id, etl_step, step_seq)
 )
 
-/*
-create table metadata.job_scheduler(
- job_scheduler_id int identity not null 
-,job_id int not null CONSTRAINT metadata_job_scheduler_FK1 FOREIGN KEY REFERENCES metadata.job(job_id)
-,job_inst_id int null 
-,job_scheduler_status varchar(16) not null check (job_scheduler_status in ('failed', 'running','succeeded','pending')) 
-,job_scheduler_start_date smalldatetime null
-,job_scheduler_end_date smalldatetime null
-,date_created smalldatetime not null default getdate()
-,date_updated smalldatetime null
-,CONSTRAINT metadata_job_scheduler_PK PRIMARY KEY (job_scheduler_id)
-)
-*/
-drop table if exists metadata.api_response_log
-create table metadata.api_response_log (
-    job_id int,
-    [timestamp] smalldatetime,
-    status_code int,
-    response_text nvarchar(max),
-    request_url nvarchar(500),
-    payload nvarchar(max),
-    headers nvarchar(max)
-)
-
-drop table if exists metadata.error_log
-CREATE TABLE metadata.error_log (
-    job_inst_id INT,
-    step_name NVARCHAR(50),
-    timestamp DATETIME,
-    error_message NVARCHAR(MAX),
-    context NVARCHAR(MAX)
-)
 
 drop table if exists metadata.log_header
 CREATE TABLE metadata.log_header (

@@ -29,7 +29,14 @@ SET NOCOUNT ON
 
 BEGIN TRY
 
+DECLARE @log_header_id INT
+
 if @p_action = 'INS' BEGIN
+
+declare @job_name varchar(128) =
+							(Select j.job_name from [metadata].[job_inst] ji 
+							inner join 	[metadata].[job] j on j.job_id = ji.job_id 
+							where ji.job_inst_id = @p_job_inst_id)
 
 	insert into  [metadata].[log_header](
 		   job_inst_id
@@ -41,16 +48,33 @@ if @p_action = 'INS' BEGIN
 
 	select 
 		   job_inst_id = @p_job_inst_id
-		  ,job_name	   = (Select job_name from [metadata].[job_inst] ji 
-							inner join 	[metadata].[job] j on j.job_id = ji.job_id 
-							where ji.job_inst_id = @p_job_inst_id)
+		  ,job_name	   = @job_name
 		  ,job_status	= @p_job_status
 		  ,start_time	= GETDATE() 
 
---		SELECT SCOPE_IDENTITY()
+	SELECT @log_header_id = SCOPE_IDENTITY()
+
+		insert into [metadata].[log_dtl](
+			log_header_id
+			,task_name
+			,task_status
+			,error_msg
+			,context
+			,is_error
+			)
+		select
+			 log_header_id	= @log_header_id
+			,task_name		= 'start_job'
+			,task_status	= 'started'
+			,error_msg		= '*** STARTED || ' + @job_name + ' with job_inst_id = ' + str(@p_job_inst_id)
+			,context		= 'sp sp_crud_log_header'
+			,is_error		= 0
+
+
 
 END
 ELSE IF @p_action = 'UPD' BEGIN
+
 
 	UPDATE [metadata].[log_header]
 	SET 
@@ -58,6 +82,9 @@ ELSE IF @p_action = 'UPD' BEGIN
 		  ,end_time		= case when @p_job_status  in ('failed', 'succeeded') then getdate() else [end_time] end
 		  ,error_msg	= @p_error_msg
 	WHERE   job_inst_id = @p_job_inst_id
+
+	 
+
 
 END 
 

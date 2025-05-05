@@ -36,6 +36,7 @@ if @p_action='INS' BEGIN
 	INSERT INTO [metadata].[job_inst_task](
 		   [job_inst_id]
 		  ,[job_task_id]
+		  ,etl_step
 		  , step_seq
 		  ,[task_start_date]
 		  ,[task_end_date]
@@ -44,6 +45,7 @@ if @p_action='INS' BEGIN
 	SELECT 
 		   [job_inst_id]		= @p_job_inst_id
 		  ,[job_task_id]		= @p_job_task_id
+		  ,etl_step				= (select etl_step from [metadata].[job_task] where job_task_id = @p_job_task_id)
 		  ,step_seq				= @p_step_seq
 		  ,[task_start_date]	= NULL
 		  ,[task_end_date]		= NULL
@@ -69,6 +71,7 @@ ELSE if @p_action = 'SEL' BEGIN
 SELECT [job_inst_task_id]
     ,[job_task_id]
     ,[job_inst_id]
+	,etl_step
     ,[step_seq]
     ,[task_start_date]
     ,[task_end_date]

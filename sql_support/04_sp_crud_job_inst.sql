@@ -68,6 +68,7 @@ end
 	INSERT INTO [metadata].[job_inst_task](
 		   [job_inst_id]
 		  ,[job_task_id]
+		  , etl_step
 		  , step_seq
 		  ,[task_start_date]
 		  ,[task_end_date]
@@ -75,7 +76,8 @@ end
 	)
 	SELECT 
 		   [job_inst_id]		= @job_inst_id
-		  ,[job_task_id]		
+		  ,[job_task_id]
+		  ,etl_step
 		  ,[step_seq]				
 		  ,[task_start_date]	= NULL
 		  ,[task_end_date]		= NULL
@@ -119,12 +121,15 @@ ELSE if @p_action = 'UPD' BEGIN
 END
 ELSE if @p_action = 'SEL' BEGIN
 
-	SELECT  job_id, job_inst_id, is_full_load, del_temp_data,
-			  run_extract = case when etl_steps like '%E%' then 1 else 0 end
-			, run_transform = case when etl_steps like '%T%' then 1 else 0 end
-			, run_load = case when etl_steps like '%L%' then 1 else 0 end
+	SELECT  ji.job_id, job_inst_id, ji.is_full_load, ji.del_temp_data,
+			  run_extract = case when ji.etl_steps like '%E%' then 1 else 0 end
+			, run_transform = case when ji.etl_steps like '%T%' then 1 else 0 end
+			, run_load = case when ji.etl_steps like '%L%' then 1 else 0 end
+			, ji.etl_steps
 			, [job_status]
-		FROM  metadata.job_inst
+			, j.job_name
+		FROM  metadata.job_inst ji 
+		inner join [metadata].[job] j on j.job_id = ji.job_id
 		where job_inst_id = @p_job_inst_id
 
 END

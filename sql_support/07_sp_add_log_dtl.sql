@@ -48,10 +48,11 @@ select
 	,context		= @p_context
 	,is_error		= @p_is_error
 
-if @p_task_status = 'failed'
+if @p_task_status = 'failed' BEGIN
+
 	exec [metadata].[sp_crud_log_header] 'upd',@p_job_inst_id, 'failed', @p_error_msg
 
-
+END
 
 END TRY
 BEGIN CATCH
