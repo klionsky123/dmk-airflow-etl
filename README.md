@@ -1,4 +1,4 @@
-# ETL Metadata Framework for managing complex data workflows in Apache Airflow:
+# ETL Metadata Framework for managing complex data workflows in Apache Airflow
 ---
 ## Main Features
 
