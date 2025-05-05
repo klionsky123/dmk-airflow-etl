@@ -1,6 +1,8 @@
 
 CREATE OR ALTER PROCEDURE dbo.insert_reqres_user (
 	@p_job_inst_id int
+		,@p_job_inst_task_id int 
+
 )
 AS
     BEGIN
