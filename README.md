@@ -68,7 +68,7 @@ They provide support for
 ## Road Map
 
 - Add Use cases for streaming data (Kafka), Parque files (AWS)
-- Add support for PostgresSQL metadata store (currently, MS SQL Server only)
+- Add support for PostgreSQL metadata store (currently, MS SQL Server only)
 
 
 
