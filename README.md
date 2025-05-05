@@ -8,9 +8,8 @@ This framework provides a metadata-driven orchestration layer integrated with Ap
 
 ## ✅ Main Features
 
-- Contains a fully functional, stand-alone set of metadata tables and stored procedures to support ETL processes.
+- Contains a fully functional, stand-alone set of metadata tables, stored procedures, and python modules to support ETL processes.
 - Extracts sample data from various data sources—flat files, relational databases (RDBMS), and REST APIs(with token-based auth, pagination, etc.)—with a strong emphasis on performance.
-- Performs data loading and transformation via SQL stored procedures
 - Scheduled and orchestrated through Apache Airflow.
 
 ---
