@@ -33,7 +33,7 @@ def process_extract_csv_file(row):
     file_path = os.path.join(docker_shared_path, file_name)
 
     # The path as seen by SQL Server (UNC path)
-    sql_server_path = f"\\\\192.168.86.96\\shared\\bulk_files\\{file_name}"
+    sql_server_path = f"\\\\[ip address]\\shared\\bulk_files\\{file_name}"
 
     # Append a query to capture the row count after the bulk insert
     bulk_insert_sql = f"""
