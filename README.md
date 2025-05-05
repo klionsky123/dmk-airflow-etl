@@ -1,5 +1,4 @@
-# Complete ETL solution with metastore, pipelines, and Apache Airflow
-
+# ETL Metadata Framework for managing complex data workflows in Apache Airflow:
 ---
 ## Main Features
 
