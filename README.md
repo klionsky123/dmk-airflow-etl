@@ -26,12 +26,12 @@ This framework provides a metadata-driven orchestration layer integrated with Ap
 
 ## Project Notes
 
-- MS SQL server, installed on a separate machine, is a destination that contains 
-  1. ETL metadata tables (metadata `schema`)
-  2. Both `Stage` & `Prod` data tables.
-- Apache Airflow, installed on Docker, is used for scheduling & ETL processing.
-- Extract part is done via python modules.
-- Both Transform & Load steps are implemented via stored procedures.
+- Microsoft SQL Server, installed on a separate machine, serves as the destination database and contains:
+  1. ETL metadata tables (in a dedicated metadata schema)
+  2. Both staging and production data tables
+- Apache Airflow, running in Docker, is used for job scheduling and ETL orchestration.
+- The Extract step is implemented using Python pandas, sqlalchemy and SQL Server stored procs.
+- The Transform and Load steps are handled via SQL stored procedures.
   
 ### Project Architecture: 
 <br/>
