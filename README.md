@@ -1,5 +1,11 @@
 # ETL Metadata Framework for managing complex data workflows in Apache Airflow
+
 ---
+
+## About
+
+This framework provides a metadata-driven orchestration layer integrated with Apache Airflow, enabling scalable, maintainable, and auditable ETL processes. It abstracts job definitions, task logic, source configurations, and execution states into centralized metadata tables, forming the "brain" of the system.
+
 ## Main Features
 
 - Contains stand-alone fully functional set of metadata tables, and stored procs for ETL support.
@@ -33,17 +39,17 @@
 
 ---
 
-## ETL-Metadata-tables Features
+## 🧠 ETL-Metadata-framework Database Features
 
-The set of ETL meatadata tables, the 'brain' of the system, includes job & job tasks definitions, clients/data sources configurations as well as logs.
-It provides support for 
-- Full/incremental extracts based on incremental dates.
-- Data Lineage.
-- E (Extract) only, or TL (Transform & Load) only jobs.
-- Storage of Extract sql queries as well as tracking of stored procs (aka 'scripts') used in Transform & Load steps.
-- 'Large' and 'Small' client data sets/data sources resulting  in the different approaches for performance.
-- Making specific job tasks active/inactive without affecting the job or other job tasks for that job.
-- On/off fuctionality for deletion of the temp data structures during Extract step, which is helpfull during debugging/research.
+ETL meatadata tables include job & job tasks definitions, clients/data sources configurations as well as logs.
+They provide support for 
+- Full and Incremental `Extracts` based on incremental dates.
+- `Data Lineage` & Traceability (source systems, intermediate steps, and target destinations).
+- `Extract`-only or (`Transform` & `Load`)-only job structures.
+- Storage of `Extract` sql queries as well as the tracking of the stored procs (aka 'scripts') used in `Transform` & `Load`.
+- `Large vs. Small Data Strategies` resulting in the different approaches for performance.
+- Task-level activation on/off-switches without modifying the overall job
+- Configurable cleanup for the temp structures (staging tables, flat files) via metadata on/off-switches; helpful for debugging and research.
 - Full logging (in addition to Apache Airlfow logging).
 
 ### ETL-Metadata-tables schema 
