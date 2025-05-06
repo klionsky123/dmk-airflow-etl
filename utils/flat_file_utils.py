@@ -202,7 +202,7 @@ def __load_small_file(config: FlatFileConfig):
     target_table = config.target_table
 
      # The path as seen by SQL Server (UNC path)
-    sql_server_path = f"\\\\xxx.168.86.96\\shared\\bulk_files\\{config.file_name}"
+    sql_server_path = f"\\\\192.168.86.96\\shared\\bulk_files\\{config.file_name}"
 
     # Append a query to capture the row count after the bulk insert
     bulk_insert_sql = f"""
@@ -283,7 +283,8 @@ def __move_file(job_inst_id: int, file_path: str, target_dir: str ):
         name, ext = os.path.splitext(base_name)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        new_filename = f"{name}_{timestamp}{ext}"
+        # add prefix 'err_' for error:
+        new_filename = f"{'err_' if target_dir == 'error' else ''}{name}_{timestamp}{ext}"
         new_path = os.path.join(processed_dir, new_filename)
 
         shutil.move(file_path, new_path)

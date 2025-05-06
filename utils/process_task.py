@@ -62,7 +62,7 @@ def process_extract_task_mssql(row: dict) -> int:
     log_job_task(job_inst_task_id, "running")   # [metadata].[job_inst_task] table
 
     engine_tgt = get_engine_for_metadata()  # Target
-    engine_src = create_engine(f"mssql+pyodbc:///?odbc_connect={conn_str}")    # Source
+    engine_src = create_engine(f"{conn_str}")# create_engine(f"mssql+pyodbc:///?odbc_connect={conn_str}")    # Source
 
     log_info(job_inst_id = job_inst_id
         , task_name = job_task_name
@@ -125,6 +125,7 @@ def process_extract_task_mssql(row: dict) -> int:
                 if not is_full_load:
                     sql_text = f"{sql_text}  and {incr_column} >= '{incr_date}'"
 
+                print(sql_text)
                 df = pd.read_sql(text(sql_text), con=conn_src)
                 if is_large:
                     # Write to CSV
@@ -140,7 +141,7 @@ def process_extract_task_mssql(row: dict) -> int:
                     df.to_csv(file_path, index=False)
 
                     # The path as seen by SQL Server (UNC path)
-                    sql_server_path = f"\\\\xxx.168.86.96\\shared\\bulk_files\\{filename}"
+                    sql_server_path = f"\\\\192.168.86.96\\shared\\bulk_files\\{filename}"
 
                     # Append a query to capture the row count after the bulk insert
                     bulk_insert_sql = f"""
@@ -207,7 +208,6 @@ def process_extract_task_mssql(row: dict) -> int:
 
 
                         # Move to target table
-                        # insert_sql = f"truncate table {target_table}; INSERT INTO {target_table} SELECT * FROM {temp_table}"
                         insert_sql = f"INSERT INTO {target_table} SELECT * FROM {temp_table}"
 
                         print(f"SQL Statement || {insert_sql}")
