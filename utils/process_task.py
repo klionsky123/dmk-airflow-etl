@@ -10,83 +10,31 @@ from sqlalchemy import create_engine, text
 from helper import get_engine_for_metadata, log_error, log_info, log_job_task
 from open_alex_api import openalex_fetch_and_save
 from reqres_api import reqres_fetch_and_save
+from flat_file_utils import file_fetch_and_save
+"""
+#####################################################################
+# A Processing that is based on the data source type.
+# logic:
+    process_extract_csv_file(row)                       # flat file 
+     ↳ calls __truncate_table   # truncate tgt tbl 
+     ↳ calls __move_file        # move file after processing        
+    process_extract_task_mssql(row)                     # sql server 
+    process_api_data(row)                               # REST API
+     ↳ calls open_alex_api.openalex_fetch_and_save(row) # OpenAlex API with Cursor-Based Pagination
+     ↳ calls reqres_api.reqres_fetch_and_save(row)      # Reqres API 
+    process_transform_task_mssql()                      # Transform step via stored proc
+    process_load_task_mssql()                           # Load step via stored proc
 
-def process_extract_csv_file(row):
-    """
-     Purpose:
-         Process 'extract' step of a job instance task.
-         - bulk insert
+#####################################################################
+LOGGING NOTES: 
+    ↳ print() is to see messages live inside Airflow logs.
+    ↳ log_info() and log_error() capture everything into my metadata.log tables.
+    ↳ log_job_task() updates task status (running, success, failed) in my metadata.job_inst & job_inst_task tables.
+#####################################################################
+"""
 
-     Called from: extract()
-     """
-
-    job_inst_id = row["job_inst_id"]
-    job_task_name = row["job_task_name"]
-    file_name=row["file_path"]
-    target_table = row["tgt_fully_qualified_tbl_name"]
-
-    # truncate target table:
-    __truncate_table(job_inst_id=job_inst_id, target_table=target_table)
-
-    # This is inside the container, but it's mapped to the Windows share
-    docker_shared_path = "/opt/airflow/tmp/"
-    file_path = os.path.join(docker_shared_path, file_name)
-
-    # The path as seen by SQL Server (UNC path)
-    sql_server_path = f"\\\\[ip address]\\shared\\bulk_files\\{file_name}"
-
-    # Append a query to capture the row count after the bulk insert
-    bulk_insert_sql = f"""
-                            BULK INSERT {target_table}
-                            FROM '{sql_server_path}'
-                            WITH (
-                                FIRSTROW = 2,
-                                FIELDTERMINATOR = ',',
-                                ROWTERMINATOR = '\\n',
-                                TABLOCK
-                            );
-
-                        """
-
-    print(bulk_insert_sql)
-    log_info(job_inst_id=job_inst_id
-             , task_name=job_task_name
-             , info_message=f"SQL Statement || {bulk_insert_sql}"
-             , context="process_extract_task_mssql()"
-             )
-
-    # insert:
-    engine_tgt = get_engine_for_metadata()  # Target
-    with engine_tgt.connect() as conn_tgt:
-        try:
-            conn_tgt.execution_options(autocommit=True).execute(text(bulk_insert_sql))
-
-            # Fetch the row count from the result
-            result = conn_tgt.execute(text("SELECT @@ROWCOUNT AS inserted_rows"))
-            row_count = result.scalar()  # or: result.fetchone()["inserted_rows"]
-
-            print(f"Number of rows inserted: {row_count}")
-            log_info(job_inst_id=job_inst_id
-                     , task_name=job_task_name
-                     , info_message=f"Target table [{target_table}] || inserted {row_count} rows"
-                     , context="process_extract_csv_file()"
-                     )
-
-        except Exception as e:
-            log_error(job_inst_id=job_inst_id, task_name=job_task_name,
-                      error_message=f"Failed to insert into table {target_table}: {e}",
-                      context="process_extract_csv_file()")
-            # move file after processing to 'error' directory
-            if os.path.exists(file_path):
-                __move_file(job_inst_id=job_inst_id, file_path=file_path, target_dir="error")
-            raise
-        ###################################################################
-    # move file after processing to 'processed' directory
-    print(file_path)
-    if os.path.exists(file_path):
-        __move_file(job_inst_id=job_inst_id, file_path=file_path, target_dir="processed")
-
-    return row_count
+def process_extract_csv_file(row: dict):
+    file_fetch_and_save(row)
 
 def process_extract_task_mssql(row: dict) -> int:
     """
@@ -440,45 +388,3 @@ def process_load_task_mssql(
                   )
         log_job_task(job_inst_task_id, "failed")  # [metadata].[job_inst_task] table
         raise
-def __truncate_table(job_inst_id: int, target_table: str):
-    """
-    This function truncates the target table in the database.
-    """
-    engine = get_engine_for_metadata()  # Target
-    try:
-        with engine.connect() as conn:
-            trans = conn.begin()
-            conn.execute(f"TRUNCATE TABLE {target_table}")
-            trans.commit()
-            log_info(job_inst_id=job_inst_id, task_name="truncate_table",
-                     info_message=f"Successfully truncated table {target_table}.", context="truncate_table()")
-    except Exception as e:
-        trans.rollback()
-        log_error(job_inst_id=job_inst_id, task_name="truncate_table",
-                  error_message=f"Failed to truncate table {target_table}: {e}", context="truncate_table()")
-        raise
-
-def __move_file(job_inst_id: int, file_path: str, target_dir: str ):
-    """
-    This function moves file_path file after processing to:
-    target_dir = "error" in case of error
-    target_dir = "processed" in cased of success
-
-    """
-    if os.path.exists(file_path):
-        processed_dir = os.path.join(os.path.dirname(file_path), target_dir)
-        os.makedirs(processed_dir, exist_ok=True)  # Ensure the directory exists
-
-        # Split the filename and add a timestamp like file_20250430_143522.csv.
-        base_name = os.path.basename(file_path)
-        name, ext = os.path.splitext(base_name)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-        new_filename = f"{name}_{timestamp}{ext}"
-        new_path = os.path.join(processed_dir, new_filename)
-
-        shutil.move(file_path, new_path)
-        print(f"Moved file to: {new_path}")
-
-        log_info(job_inst_id=job_inst_id, task_name="extract",
-                 info_message=f"Moved file to: {new_path}.", context="__move_file")

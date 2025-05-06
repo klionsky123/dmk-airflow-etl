@@ -39,8 +39,8 @@ logic:
 openalex_fetch_and_save()
    ↳ loads config + table metadata (reflection)
    ↳ calls fetch_data_from_openalex(config) || fetches JSON data from the OpenAlex API using cursor-based pagination
-        ↳ calls get_page(config, cursor) || request definition
-   ↳ calls save_results_to_file(all_results, config) || saves all JSON responses into a single combined file
+        ↳ calls get_page(config, cursor) || request definitions
+   ↳ calls save_results_to_file(all_results, config) || saves all JSON page responses into a single combined file
    ↳ calls load_data_into_db(config)
         ↳ calls openalex_load_all_into_db(config) || loads the file in chunks into the tgt table 
             ↳ truncate_table(config) 
@@ -113,27 +113,33 @@ def get_page(config: ApiConfig, cursor):
     return response.json()
 
 # === Main ETL Methods === #
-def openalex_fetch_and_save(row: dict):
+def openalex_fetch_and_save(job_inst_dict: dict):
+    """
+     Purpose:
+         Process 'extract' task of a job instance.
+         - REST API call
+     Called from: process_task.process_extract_api_data()
+     Parameters: job_inst_dict  - dict with job instance information
+     """
+    job_inst_id = job_inst_dict["job_inst_id"]
+    job_inst_task_id = job_inst_dict["job_inst_task_id"]
+    job_task_name = job_inst_dict["job_task_name"]
+
+    # Mark task as "running"
+    log_job_task(job_inst_task_id, "running")
+    log_info(job_inst_id, job_task_name
+             , "Starting OpenAlex fetch and save"
+             , context="openalex_fetch_and_save")
+
     try:
 
-        job_inst_id = row["job_inst_id"]
-        job_inst_task_id = row["job_inst_task_id"]
-        job_task_name = row["job_task_name"]
-        is_full_load = row["is_full_load"]
+        # Get API config parameters from metadata tables for this job-task-instance (i.e., job_task_inst_id)
+        etl_step = "E" # this is extract
+        job_task_inst_dict = get_job_inst_task_info(job_inst_id, etl_step, job_inst_task_id)
+        print(job_task_inst_dict)
 
-        # Mark task as "running"
-        log_job_task(job_inst_task_id, "running")
-        log_info(job_inst_id, job_task_name
-                 , "Starting OpenAlex fetch and save", context="openalex_fetch_and_save")
-
-        # Get API config parameters from metadata tables
-        etl_step = "E"
-
-        row = get_job_inst_task_info(job_inst_id, etl_step, job_inst_task_id)
-        print(row)
-        config = ApiConfig(row)  # Initialize configuration object
-        config.job_inst_id = job_inst_id
-        config.is_full_load = is_full_load
+        # Initialize configuration object for this job-task-instance (i.e., job_task_inst_id)
+        config = ApiConfig(job_task_inst_dict)
 
         # 1. Fetch and save data
         all_results = fetch_data_from_openalex(config)
@@ -415,144 +421,6 @@ def insert_into_db(chunk: list[dict], config: ApiConfig):
                   error_message=f"An error occurred during insert operation: {e}",
                   context="insert_into_db()")
         raise  # Re-raise to stop execution in case of critical failure
-# getting Error: Error occurred: '<' not supported between instances of 'int' and 'str'
-# using column mappings:
-def insert_into_db_ver2(chunk: list[dict], config: ApiConfig):
-    try:
-        # Retrieve target table from the database using reflection
-        target_table = get_target_table_from_db(config)
-
-        # Column mapping for extracting data from the JSON objects
-        column_mapping = {
-            "id": "id",
-            "title": "title",
-            "doi": "doi",
-            "publication_year": "publication_year",
-            "host_venue": "primary_location.source.display_name",  # Nested example
-            "type": "type"
-        }
-
-        # Prepare a list of records to insert
-        records_to_insert = []
-        for rec in chunk:
-            row_data = []
-            for table_col, json_path in column_mapping.items():
-                # Use get_nested_value to handle missing or None fields gracefully
-                value = get_nested_value(rec, json_path, default_value={})
-                row_data.append(value)
-            records_to_insert.append(tuple(row_data))  # Convert to tuple per SQLAlchemy requirement
-
-        if records_to_insert:
-            try:
-                with engine.begin() as conn:
-                    trans = conn.begin()
-                    conn.execute(insert(target_table), records_to_insert)
-                    trans.commit()
-
-                # Log successful insertion
-                log_info(job_inst_id=config.job_inst_id, task_name="insert_into_db",
-                         info_message=f"Inserted {len(records_to_insert)} records into {config.target_table}.",
-                         context="insert_into_db()")
-
-            except SQLAlchemyError as e:
-                # Log error and handle transaction failure
-                trans.rollback()
-                log_error(job_inst_id=config.job_inst_id, task_name="insert_into_db",
-                          error_message=f"Failed to insert into {config.target_table}: {e}",
-                          context="insert_into_db()")
-                raise  # Re-raise exception to stop further processing
-
-        else:
-            log_info(job_inst_id=config.job_inst_id, task_name="insert_into_db",
-                     info_message="No records to insert.", context="insert_into_db()")
-
-    except Exception as e:
-        # Log unexpected errors
-        log_error(job_inst_id=config.job_inst_id, task_name="insert_into_db",
-                  error_message=f"An error occurred during insert operation: {e}",
-                  context="insert_into_db()")
-        raise  # Re-raise to stop execution in case of critical failure
-
-
-
-def insert_into_db1(records, config: ApiConfig):
-    """
-    Bulk insert with fast_executemany
-
-    Arguments:
-    records -- A list of records (each record is a dictionary)
-    config -- An instance of the ApiConfig
-    """
-
-    # using reflection (autoload_with=engine) to load table definition at runtime from db.
-    target_table = get_target_table_from_db(config)
-    records_to_insert = []
-    try:
-        # build a list first:
-        for rec in records:
-            # Note: we get not all but only specific JSON fields to the table openalex.works
-            if config.target_table == "dmk_stage_db.raw.openalex_works":
-                primary_location = rec.get("primary_location") or {}
-                source = primary_location.get("source") or {}
-                host_venue = source.get("display_name")
-
-                records_to_insert.append({
-                    "id": rec.get("id"),
-                    "title": rec.get("title"),
-                    "doi": rec.get("doi"),
-                    "publication_year": rec.get("publication_year"),
-                    "host_venue": host_venue,
-                    "type": rec.get("type"),
-                })
-            elif config.target_table == "dmk_stage_db.raw.openalex_authors":
-                # ["id", "display_name", "orcid", "works_count", "cited_by_count", "last_known_institution"]
-                # authorships.author.orcid
-                # referenced_works_count
-                # counts_by_year.cited_by_count
-                # authorships.institutions.display_name
-
-                authorships = rec.get("authorships") or {}
-                author = authorships.get("author") or {}
-                orcid = author.get("orcid") or {}
-
-                counts_by_year = rec.get("counts_by_year") or {}
-                cited_by_count = counts_by_year.get("cited_by_count") or {}
-
-                institutions = authorships.get("institutions") or {}
-                last_known_institution = institutions.get("display_name") or {}
-
-                records_to_insert.append({
-                    "id": rec.get("id"),
-                    "display_name": rec.get("display_name"),
-                    "orcid": orcid,
-                    "works_count": rec.get("referenced_works_count"),
-                    "cited_by_count": cited_by_count,
-                    "last_known_institution": last_known_institution,
-                })
-
-        try:
-            with engine.begin() as conn:  # starts transaction
-                trans = conn.begin()
-                conn.execute(insert(target_table), records_to_insert)
-                trans.commit()
-
-            log_info(job_inst_id=config.job_inst_id, task_name="insert_into_db",
-                     info_message=f"Inserted {len(records_to_insert)} records into {config.target_table}.",
-                     context="insert_into_db()")
-
-        except SQLAlchemyError as e:
-            trans.rollback()
-            log_error(job_inst_id=config.job_inst_id, task_name="insert_into_db",
-                      error_message=f"Failed to insert : {e}",
-                      context="insert_into_db()")
-            raise  # Re-raise to stop further insertions if one fails
-
-    except Exception as e:
-        log_error(job_inst_id=config.job_inst_id, task_name="insert_into_db",
-                  error_message=f"An error occurred while inserting data into {config.target_table}: {e}",
-                  context="insert_into_db()")
-        raise
-
 
 # using reflection (autoload_with=engine) to load table definition at runtime from db.
 def get_target_table_from_db(config: ApiConfig) -> Table:

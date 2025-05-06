@@ -2,12 +2,15 @@ import requests
 import json
 from datetime import datetime
 import os
+from tenacity import retry, stop_after_attempt, wait_fixed
 from helper import *
 
 """
 1. save into the table
 2. additionally, save into file for later reprocessing when needed
 """
+# === Retry Decorator for API calls === #
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 def reqres_fetch_and_save(row: dict):
     # [two-step API call + data ingestion]
     # 1. get api_key
