@@ -36,10 +36,6 @@ This framework provides a metadata-driven orchestration layer integrated with Ap
 
 <img src="diagrams/Project-architecture.jpg" alt="Example" width="500" hight="300"/>
 
-### Project Structure: 
-
-<img src="diagrams/FolderStructure.jpg" alt="Example" width="500" hight="300"/>
-
 ---
 
 ## 🧠 ETL-Metadata-framework Database Features
@@ -56,16 +52,20 @@ They provide support for
 - Full logging (in addition to Apache Airlfow logging).
 
 ### ETL-Metadata-tables schema 
-<br/>
+
 <img src="diagrams/metadata-db-schema.jpg" alt="Example" width="500" hight="300"/>
 
 ### Covered Use cases:
-<br/>
+
 <img src="diagrams/Covered-ETL-Use-cases2.jpg" alt="Example" width="500" hight="100"/>
 
 ### AirFlow graph:
-<br/>
+
 <img src="diagrams/Airflow-graph.jpg" alt="Example" width="500" hight="300"/>
+
+### Project Structure: 
+
+<img src="diagrams/FolderStructure.jpg" alt="Example" width="250" hight="150"/>
 
 ---
 
