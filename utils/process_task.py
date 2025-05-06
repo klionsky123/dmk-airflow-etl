@@ -140,7 +140,7 @@ def process_extract_task_mssql(row: dict) -> int:
                     df.to_csv(file_path, index=False)
 
                     # The path as seen by SQL Server (UNC path)
-                    sql_server_path = f"\\\\192.168.86.96\\shared\\bulk_files\\{filename}"
+                    sql_server_path = f"\\\\xxx.168.86.96\\shared\\bulk_files\\{filename}"
 
                     # Append a query to capture the row count after the bulk insert
                     bulk_insert_sql = f"""
