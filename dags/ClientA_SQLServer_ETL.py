@@ -14,102 +14,37 @@ from airflow.decorators import task, task_group
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../utils')))
 # From the module helper.py, inside the package utils, import these functions:
-from helper import get_engine_for_metadata, log_error, log_info, log_job_task,complete_job, get_all_job_inst_tasks
+from helper import (get_engine_for_metadata, log_error, log_info, log_job_task,complete_job, get_all_job_inst_tasks
+, create_job_inst_and_log, get_job_inst_info)
 from process_task import (process_extract_csv_file,process_extract_task_mssql, process_api_data,process_transform_task_mssql
 ,process_load_task_mssql)
 sys.path.append('/opt/airflow/utils')
 
 
 @task()
-def start_job(job_id: int):
+def start_job(job_id: int)-> int:
     """
         # call [metadata].[sp_crud_job_inst] stored proc to:
-        # 1. create job_inst_id and related tasks
-        # 2. log process start  
+        # 1. creates job_inst_id and related tasks
+        # 2. logs process start
     """
-    engine = get_engine_for_metadata()
-
-    with engine.connect() as connection:
-        # Begin a transaction
-        trans = connection.begin()
-        try:
-            # Execute the stored procedure
-            result = connection.execute(
-                text("""
-                    EXEC [metadata].[sp_crud_job_inst] 
-                        @p_action = :param1,
-                        @p_job_id = :param2
-                """),
-                {"param1": "INS", "param2": job_id}
-            ).fetchone()
-
-            # Commit the transaction
-            trans.commit()
-
-            if result:
-                job_inst_id = result[0]  # this returns a single integer (job_inst_id)
-                print(f"[{job_inst_id}] Status set to running")
-                return job_inst_id
-            else:
-                raise Exception("Failed to create or retrieve job_inst_id from [metadata].[sp_crud_job_inst] stored procedure.")
-        except Exception as e:
-            # Rollback the transaction in case of an error
-            trans.rollback()
-            raise Exception(f"Transaction failed: {e}")
+    return create_job_inst_and_log(job_id)
 
 @task()
 def finalize_job(job_data:dict):
-    try:
-        log_info(job_data['job_inst_id'], 'finalize_job'
-                 , "*** FINISHED", context="finalize_job()", task_status="succeeded")
-        complete_job(job_inst_id=job_data["job_inst_id"], success=True)
+    # Mark job completion:
+    log_info(job_data['job_inst_id'], 'finalize_job'
+             , "*** FINISHED", context="finalize_job()", task_status="succeeded")
 
-    except Exception as e:
-        print(f"[{job_data['job_inst_id']}] Finalization failed: {e}")
-        complete_job(job_inst_id=job_data["job_inst_id"], success=False)
-        
+    complete_job(job_inst_id=job_data["job_inst_id"], success=True)
+
 @task
 def fetch_job_params(job_inst_id: int) -> dict:
-    # returns a single row:
-    engine = get_engine_for_metadata()
-    with engine.connect() as connection:
-        result = connection.execute(
-            text("""
-                EXEC [metadata].[sp_crud_job_inst] 
-                     @p_action = :param1,
-                     @p_job_id = :param2,
-                     @p_job_inst_id = :param3,
-                     @p_job_status = :param4
-            """),
-            {
-                "param1": "SEL",
-                "param2": 0,
-                "param3": job_inst_id,
-                "param4": None,
-            }
-        )
-        record = result.fetchone()  # List of tuples
-        #return [dict(row) for row in records]  
-        # Fetch the first record and return as a dictionary
-
-        if record:
-            data = dict(record)
-            job_name = data["job_name"]
-            del_temp_data =data['del_temp_data']
-            etl_steps = data['etl_steps']
-            is_full_load = data['is_full_load']
-            log_info(job_inst_id, 'fetch_job_params'
-                     , f"Starting Job {job_name} with ETL steps as || {etl_steps} || and full load set to || {is_full_load} ", context="fetch_job_params")
-            return data
-        else:
-            log_error(
-                job_inst_id=job_inst_id,
-                task_name="fetch_job_params",
-                error_message=f"No job parameters found for job_inst_id: {job_inst_id}",
-                context="fetch_job_params()"
-            )
-            raise Exception(f"No job parameters found for job_inst_id: {job_inst_id}")
-
+    """
+        # call [metadata].[sp_crud_job_inst]  stored proc to:
+        # get job parameters  from metadata tables
+    """
+    return get_job_inst_info(job_inst_id)
 # Step 2: Define the ETL task group
 @task_group
 def etl_group(job_data: dict):
