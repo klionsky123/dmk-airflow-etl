@@ -33,8 +33,12 @@ This framework provides a metadata-driven orchestration layer integrated with Ap
 - The Transform and Load steps are handled via SQL stored procedures.
   
 ### Project Architecture: 
-<br/>
+
 <img src="diagrams/Project-architecture.jpg" alt="Example" width="500" hight="300"/>
+
+### Project Structure: 
+
+<img src="diagrams/FolderStructure.jpg" alt="Example" width="500" hight="300"/>
 
 ---
 
