@@ -143,10 +143,10 @@ def etl_group(job_data: dict):
                 source_table = row["src_fully_qualified_tbl_name"]
                 target_table = row["tgt_fully_qualified_tbl_name"]
 
-                print(f"Started || {job_task_name}  || {source_table} --> {target_table}")
+                print(f"Started {job_task_name}  task || {source_table} --> {target_table}")
                 log_info(job_inst_id=job_inst_id
                          , task_name=job_task_name
-                         , info_message=f"Started || {job_task_name}  ||  {source_table} --> {target_table}"
+                         , info_message=f"Started {job_task_name}  task ||  {source_table} --> {target_table}"
                          , context="extract()")
 
                 conn_type = row["conn_type"].lower()
@@ -186,7 +186,7 @@ def etl_group(job_data: dict):
                 print(f"{job_task_name} task succeeded")
                 log_info(job_inst_id=job_inst_id
                          , task_name='extract'
-                         , info_message=f"{job_task_name} task succeeded"
+                         , info_message=f"Finished {job_task_name} task with success"
                          , context="extract()"
                          )
 
