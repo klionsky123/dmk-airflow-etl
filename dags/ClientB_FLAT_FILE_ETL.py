@@ -99,9 +99,6 @@ def etl_group(job_data: dict):
 
                     elif conn_type == "file":
                         row_count=process_extract_csv_file(row)
-                        # file_path = row["file_path"]
-                        # df = pd.read_csv(file_path)
-                        # print(f"[{job_inst_id}] CSV loaded: {df.shape[0]} rows, {df.shape[1]} columns")
 
                     elif conn_type == "parquet":
                         file_path = row["file_path"]
