@@ -63,10 +63,6 @@ They provide support for
 
 <img src="diagrams/Airflow-graph.jpg" alt="Example" width="500" hight="300"/>
 
-### Project Structure: 
-
-<img src="diagrams/FolderStructure.jpg" alt="Example" width="250" hight="150"/>
-
 ---
 
 ## Road Map
