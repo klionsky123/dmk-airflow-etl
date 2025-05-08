@@ -9,7 +9,7 @@ def get_engine_for_metadata():
     pwd = "demopass" 
     uid = "etl" 
     driver = "{ODBC Driver 17 for SQL Server}"
-    server = "xxx.xxx.86.96"
+    server = "192.168.86.96"
     database = "dmk_stage_db"
     connection_string = f"DRIVER={driver};SERVER={server};DATABASE={database};UID={uid};PWD={pwd}"
     connection_url = URL.create("mssql+pyodbc", query={"odbc_connect": connection_string})
@@ -140,12 +140,15 @@ def complete_job(job_inst_id: int, success: bool = True):
             trans.rollback()
             raise Exception(f"Transaction failed: {e}")
 
-"""
-# Get all tasks for the current job instance:
-# @p_etl_step ="E", for extract
-"""
+
 def get_all_job_inst_tasks(job_inst_id: int, etl_step: str):
+    """
+    # Get all tasks for the current job instance
+    * a generator function:  yield each row as a dictionary instead of building and returning a list.
+    # @p_etl_step ="E", for extract
+    """
     engine = get_engine_for_metadata()
+
     with engine.connect() as connection:
         try:
             # Get all tasks for the current job instance:
@@ -159,8 +162,11 @@ def get_all_job_inst_tasks(job_inst_id: int, etl_step: str):
                 {"param1": job_inst_id, "param2": etl_step}
             )
 
-            rows = result.fetchall()
-            return [dict(row) for row in rows]  # 👈 Make rows accessible by column name
+            # rows = result.fetchall()
+            # return [dict(row) for row in rows]  # Make rows accessible by column name
+
+            for row in result:
+                yield dict(row)  # 👈 Yield one row at a time
 
         except Exception as e:
             # Rollback the transaction in case of an error

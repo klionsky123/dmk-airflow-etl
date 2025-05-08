@@ -411,10 +411,6 @@ def insert_into_db(chunk: list[dict], config: ApiConfig):
                       context="insert_into_db()")
             raise  # Re-raise exception to stop further processing
 
-        else:
-            log_info(job_inst_id=config.job_inst_id, task_name="insert_into_db",
-                     info_message="No records to insert.", context="insert_into_db()")
-
     except Exception as e:
         # Log unexpected errors
         log_error(job_inst_id=config.job_inst_id, task_name="insert_into_db",

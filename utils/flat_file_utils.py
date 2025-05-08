@@ -92,11 +92,12 @@ def file_fetch_and_save(job_inst_dict: dict):
     job_inst_id = job_inst_dict["job_inst_id"]
     job_inst_task_id = job_inst_dict["job_inst_task_id"]
     job_task_name = job_inst_dict["job_task_name"]
+    file_name = job_inst_dict["file_name"]
 
     # Mark task as "running"
     log_job_task(job_inst_task_id, "running")
     log_info(job_inst_id, "file_fetch_and_save"
-             , "Starting csv file load "
+             , f"Starting csv file load || {file_name}"
              , context="file_fetch_and_save")
 
     try:
