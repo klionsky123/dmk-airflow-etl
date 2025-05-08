@@ -6,10 +6,10 @@ from sqlalchemy.engine import URL
 Connection to the metadata server
 """
 def get_engine_for_metadata():
-    pwd = "demopass" 
-    uid = "etl" 
+    pwd = "xxxxxx" 
+    uid = "xxx" 
     driver = "{ODBC Driver 17 for SQL Server}"
-    server = "192.168.86.96"
+    server = "xxx.xxx.xx.xx"
     database = "dmk_stage_db"
     connection_string = f"DRIVER={driver};SERVER={server};DATABASE={database};UID={uid};PWD={pwd}"
     connection_url = URL.create("mssql+pyodbc", query={"odbc_connect": connection_string})
