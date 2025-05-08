@@ -1,14 +1,6 @@
-from airflow import DAG
-from airflow.decorators import task, task_group
-from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.hooks.base import BaseHook
 from datetime import datetime
 import os
 import sys
-import pandas as pd
-import requests
-import json
-from sqlalchemy import create_engine, text
 from airflow import DAG
 from airflow.decorators import task, task_group
 
@@ -66,7 +58,7 @@ def etl_group(job_data: dict):
         try:
             # 1. Get all tasks for the current job instance
             # 2. Process them in a loop one task at a time
-            [JobTask(__task).process() for __task in get_all_job_inst_tasks(job_inst_id, etl_step)]
+            [JobTask(_task).process() for _task in get_all_job_inst_tasks(job_inst_id, etl_step)]
 
         except Exception as e:
             log_error(job_inst_id, "extract", str(e), "extract()")
@@ -92,7 +84,7 @@ def etl_group(job_data: dict):
         try:
             # 1. Get all tasks for the current job instance
             # 2. Process them in a loop one task at a time
-            [JobTask(__task).process() for __task in get_all_job_inst_tasks(job_inst_id, etl_step)]
+            [JobTask(_task).process() for _task in get_all_job_inst_tasks(job_inst_id, etl_step)]
 
         except Exception as e:
                 log_error(job_inst_id, "transform", str(e), "transform()")  # [metadata].[log_dtl] table
@@ -115,7 +107,7 @@ def etl_group(job_data: dict):
         try:
             # 1. Get all tasks for the current job instance
             # 2. Process them in a loop one task at a time
-            [JobTask(__task).process() for __task in get_all_job_inst_tasks(job_inst_id, etl_step)]
+            [JobTask(_task).process() for _task in get_all_job_inst_tasks(job_inst_id, etl_step)]
         except Exception as e:
                 log_error(job_inst_id, "load", str(e), "load()")  # [metadata].[log_dtl] table
                 complete_job(job_inst_id, success=False)  # [metadata].[log_header] table
