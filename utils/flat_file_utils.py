@@ -16,14 +16,14 @@ POC of csv file load:
 logic:
 file_fetch_and_save()
    ↳ loads config + table metadata (reflection)
-   ↳ calls __load_data_into_db(config)
-            ↳ __truncate_table(config)
+   ↳ calls _load_data_into_db(config)
+            ↳ _truncate_table(config)
             if file is large: 
-                ↳ __load_csv_chunks(chunk, config) || load chunks from file into the memory
-                ↳ __insert_into_db(chunk, config) || with fast_executemany = True (ODBC-level option for mysql+pyodbc))
+                ↳ _load_csv_chunks(chunk, config) || load chunks from file into the memory
+                ↳ _insert_into_db(chunk, config) || with fast_executemany = True (ODBC-level option for mysql+pyodbc))
             if file is small:
-                ↳ __load_small_file(config)
-            ↳ __move_file()                         || archive processed file
+                ↳ _load_small_file(config)
+            ↳ _move_file()                         || archive processed file
 #####################################################################
 LOGGING NOTES: 
     ↳ print() is to see messages live inside Airflow logs.
@@ -76,7 +76,7 @@ metadata = MetaData()
 # Speed up batch insertions while using mssql+pyodbc
 # This is ODBC-level optimization
 @event.listens_for(engine, "before_cursor_execute")
-def __receive_before_cursor_execute(conn, cursor, statement, params, context, executemany):
+def _receive_before_cursor_execute(conn, cursor, statement, params, context, executemany):
     if executemany:
         cursor.fast_executemany = True
 
@@ -111,12 +111,12 @@ def file_fetch_and_save(job_inst_dict: dict):
         config = FlatFileConfig(job_task_inst_dict)
 
         # load data into the database
-        __load_data_into_db(config)
+        _load_data_into_db(config)
 
         # move file after processing to 'processed' directory
         print(config.file_path_and_name)
         if os.path.exists(config.file_path_and_name):
-            __move_file(job_inst_id=config.job_inst_id, file_path=config.file_path_and_name, target_dir="processed")
+            _move_file(job_inst_id=config.job_inst_id, file_path=config.file_path_and_name, target_dir="processed")
 
         # If everything is successful, mark the task as success
         log_job_task(job_inst_task_id, "succeeded")
@@ -132,7 +132,7 @@ def file_fetch_and_save(job_inst_dict: dict):
         raise  # Re-raise the exception to propagate it
     
     
-def __load_data_into_db(config: FlatFileConfig):
+def _load_data_into_db(config: FlatFileConfig):
     """
     Load data into the database in chunks:
     - Truncate the target table if `is_full_load` is True.
@@ -147,7 +147,7 @@ def __load_data_into_db(config: FlatFileConfig):
     try:
         # Step 1: Truncate the table if it's a full load operation
         if config.is_full_load:
-             __truncate_table(config)
+             _truncate_table(config)
             
         # Step 2: load into db based on the file size    
         if config.is_large: # large file
@@ -155,41 +155,41 @@ def __load_data_into_db(config: FlatFileConfig):
             # Load data in chunks from the file and insert into the database
             log_info(job_inst_id=config.job_inst_id, task_name="file_fetch_and_save",
                      info_message=f"File size set to {config.file_size}. Starting to load data into table {config.target_table} in chunks of {config.chunk_size} records.",
-                     context="__load_data_into_db()")
+                     context="_load_data_into_db()")
     
             # Generator that yields data in chunks
-            for chunk in __load_csv_chunks(config):
+            for chunk in _load_csv_chunks(config):
     
                 # Insert the current chunk into the database
-                __insert_into_db(chunk, config)
+                _insert_into_db(chunk, config)
     
         else:   #small file
 
             log_info(job_inst_id=config.job_inst_id, task_name="file_fetch_and_save",
                      info_message=f"File size set to {config.file_size}. Starting to bulk-load data into table {config.target_table} ",
-                     context="__load_data_into_db()")
-            __load_small_file(config)
+                     context="_load_data_into_db()")
+            _load_small_file(config)
             
         # # Mark task as success:
         log_info(job_inst_id=config.job_inst_id, task_name="file_fetch_and_save",
                  info_message=f"Successfully loaded data into table {config.target_table}.",
-                 context="__load_data_into_db()")
+                 context="_load_data_into_db()")
 
 
     except Exception as e:
 
         log_error(job_inst_id=config.job_inst_id, task_name="file_fetch_and_save",
                   error_message=f"An error occurred while loading data into {config.target_table}: {e}",
-                  context="__load_data_into_db()")
+                  context="_load_data_into_db()")
         # on error, move file  to 'error' directory
         if os.path.exists(config.file_path_and_name):
-            __move_file(job_inst_id=config.job_inst_id, file_path=config.file_path_and_name, target_dir="error")
+            _move_file(job_inst_id=config.job_inst_id, file_path=config.file_path_and_name, target_dir="error")
 
         raise
 
 
 
-def __load_small_file(config: FlatFileConfig):
+def _load_small_file(config: FlatFileConfig):
     """
      Purpose:
          Process 'extract' task of a job instance.
@@ -251,7 +251,7 @@ def __load_small_file(config: FlatFileConfig):
 
     return row_count
 
-def __truncate_table(config: FlatFileConfig):
+def _truncate_table(config: FlatFileConfig):
     """
     This function truncates the target table in the database. It is called when the `is_full_load` flag is True.
     """
@@ -268,7 +268,7 @@ def __truncate_table(config: FlatFileConfig):
                   error_message=f"Failed to truncate table {config.target_table}: {e}", context="truncate_table()")
         raise
 
-def __move_file(job_inst_id: int, file_path: str, target_dir: str ):
+def _move_file(job_inst_id: int, file_path: str, target_dir: str ):
     """
     This function moves file_path file after processing to:
     target_dir = "error" in case of error
@@ -292,11 +292,11 @@ def __move_file(job_inst_id: int, file_path: str, target_dir: str ):
         print(f"Moved file to: {new_path}")
 
         log_info(job_inst_id=job_inst_id, task_name="file_fetch_and_save",
-                 info_message=f"Moved file to: {new_path}.", context="__move_file")
+                 info_message=f"Moved file to: {new_path}.", context="_move_file")
         
 
 
-def __load_csv_chunks(config: FlatFileConfig):
+def _load_csv_chunks(config: FlatFileConfig):
     """
     A generator function that loads data from a CSV file in chunks.
     'Yield' lets a function return data one piece at a time instead of all at once.
@@ -327,18 +327,18 @@ def __load_csv_chunks(config: FlatFileConfig):
 
     except FileNotFoundError as e:
         log_error(job_inst_id=config.job_inst_id, task_name="file_fetch_and_save",
-                  error_message=f"File {filename} not found: {e}", context="__load_csv_chunks()")
+                  error_message=f"File {filename} not found: {e}", context="_load_csv_chunks()")
         raise
     except Exception as e:
         log_error(job_inst_id=config.job_inst_id, task_name="file_fetch_and_save",
                   error_message=f"An error occurred while loading chunks from {filename}: {e}",
-                  context="__load_csv_chunks()")
+                  context="_load_csv_chunks()")
         raise
 
-def __insert_into_db(chunk: list[dict], config: FlatFileConfig):
+def _insert_into_db(chunk: list[dict], config: FlatFileConfig):
     try:
         # Retrieve target table from the database using reflection
-        target_table = __get_target_table_from_db(config)
+        target_table = _get_target_table_from_db(config)
         tbl_name = target_table.name
         fields = TABLE_FIELD_MAPPING.get(tbl_name, [])
         records_to_insert = []
@@ -359,14 +359,14 @@ def __insert_into_db(chunk: list[dict], config: FlatFileConfig):
             # Log successful insertion
             log_info(job_inst_id=config.job_inst_id, task_name="file_fetch_and_save",
                      info_message=f"Inserted {len(records_to_insert)} records into {config.target_table}.",
-                     context="__insert_into_db()")
+                     context="_insert_into_db()")
 
         except SQLAlchemyError as e:
             # Log error and handle transaction failure
             trans.rollback()
             log_error(job_inst_id=config.job_inst_id, task_name="file_fetch_and_save",
                       error_message=f"Failed to insert into {config.target_table}: {e}",
-                      context="__insert_into_db()")
+                      context="_insert_into_db()")
             raise  # Re-raise exception to stop further processing
 
 
@@ -374,11 +374,11 @@ def __insert_into_db(chunk: list[dict], config: FlatFileConfig):
         # Log unexpected errors
         log_error(job_inst_id=config.job_inst_id, task_name="file_fetch_and_save",
                   error_message=f"An error occurred during insert operation: {e}",
-                  context="__insert_into_db()")
+                  context="_insert_into_db()")
         raise  # Re-raise to stop execution in case of critical failure
 
 # using reflection (autoload_with=engine) to load table definition at runtime from db.
-def __get_target_table_from_db(config: FlatFileConfig) -> Table:
+def _get_target_table_from_db(config: FlatFileConfig) -> Table:
     # Split schema and table name
     # since we need schema= explicitly
     schema, table_name = config.target_table.split('.')[-2], config.target_table.split('.')[-1]

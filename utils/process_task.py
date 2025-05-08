@@ -15,15 +15,16 @@ from flat_file_utils import file_fetch_and_save
 #####################################################################
 # A Processing that is based on the data source type.
 # logic:
-    process_extract_csv_file(row)                       # flat file 
-     ↳ calls __truncate_table   # truncate tgt tbl 
-     ↳ calls __move_file        # move file after processing        
-    process_extract_task_mssql(row)                     # sql server 
-    process_api_data(row)                               # REST API
+process(self) 
+    ↳ calls _extract_csv_file()                        # flat file 
+     ↳ calls _truncate_table                           # truncate tgt tbl 
+     ↳ calls _move_file                                # move file after processing        
+    ↳ calls _extract_mssql()                           # sql server 
+    ↳ calls _extract_api_data()                        # REST API
      ↳ calls open_alex_api.openalex_fetch_and_save(row) # OpenAlex API with Cursor-Based Pagination
      ↳ calls reqres_api.reqres_fetch_and_save(row)      # Reqres API 
-    process_transform_task_mssql()                      # Transform step via stored proc
-    process_load_task_mssql()                           # Load step via stored proc
+    ↳ calls _transform_mssql()                         # Transform step via stored proc
+    ↳ calls _load_mssql()                              # Load step via stored proc
 
 #####################################################################
 LOGGING NOTES: 
@@ -68,19 +69,19 @@ class JobTask:
             if self.etl_step == "E":
                 if self.conn_type == "db":
                     if "mssql" in self.db_type:
-                        self.__extract_mssql()
+                        self._extract_mssql()
                 elif "api" in self.conn_type:
-                        self.__extract_api_data()
+                        self._extract_api_data()
                 elif self.conn_type == "file":
-                        self.__extract_csv_file()
+                        self._extract_csv_file()
                 elif self.conn_type == "parquet":
-                        self.__parquet_file()
+                        self._parquet_file()
                 else:
                     print(f"[{self.job_inst_id}] Unknown connection_type: {self.conn_type}")
             elif self.etl_step == "T":
-                return self.__transform_mssql()
+                return self._transform_mssql()
             elif self.etl_step == "L":
-                return self.__load_mssql()
+                return self._load_mssql()
 
         except Exception as e:
             print(f"[{self.job_inst_id}] Extract task [{self.job_task_name}] failed: {e}")
@@ -97,7 +98,7 @@ class JobTask:
                  context="JobTask.process()")
         return None
 
-    def __extract_mssql(self):
+    def _extract_mssql(self):
         """
            Purpose:
                Process 'extract' step of a job instance task.
@@ -131,26 +132,26 @@ class JobTask:
 
             # a SQLAlchemy-compatible URL: "mssql+pyodbc://uname:pass@ip_address/db_name?driver=ODBC+Driver+17+for+SQL+Server"
             # (Replaced spaces in the driver name with + )
-            __engine_src = create_engine(f"mssql+pyodbc:///?odbc_connect={self.conn_str}")  # Source
+            _engine_src = create_engine(f"mssql+pyodbc:///?odbc_connect={self.conn_str}")  # Source
 
-            print(f"source || {__engine_src}")
+            print(f"source || {_engine_src}")
             log_info(job_inst_id=self.job_inst_id
                      , task_name=self.job_task_name
-                     , info_message=f"source || {__engine_src}"
+                     , info_message=f"source || {_engine_src}"
                      , context="process_extract_task_mssql()"
                      )
 
             try:
-                with __engine_src.connect() as connection:
+                with _engine_src.connect() as connection:
                     trans = connection.begin()
                     try:
-                        __sql_text = f"""
+                        _sql_text = f"""
                                           EXEC {self.sql_text}  
                                               @p_job_inst_id = :param1,
                                               @p_job_inst_task_id = :param2
                                       """
                         connection.execute(
-                            text(__sql_text),
+                            text(_sql_text),
                             {"param1": self.job_inst_id, "param2": self.job_inst_task_id}
                         )
                         trans.commit()
@@ -171,17 +172,17 @@ class JobTask:
         # not a stored proc:
         else:
             # panda style conn_str: 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=xxx;DATABASE=xxx;UID=xxx;PWD=xxx'
-            __engine_src = create_engine(f"{self.conn_str}")  # Source
+            _engine_src = create_engine(f"{self.conn_str}")  # Source
 
-            print(f"source || {__engine_src}")
+            print(f"source || {_engine_src}")
             log_info(job_inst_id=self.job_inst_id
                      , task_name=self.job_task_name
-                     , info_message=f"source || {__engine_src}"
+                     , info_message=f"source || {_engine_src}"
                      , context="process_extract_task_mssql()"
                      )
 
             try:
-                with __engine_src.connect() as conn_src:
+                with _engine_src.connect() as conn_src:
                     # add incremental date if it is not a full load:
                     sql_text = f"{self.sql_text}  and {self.incr_column} >= '{self.incr_date}'" if not self.is_full_load else self.sql_text
                     print(sql_text)
@@ -315,27 +316,27 @@ class JobTask:
                 raise
 
 
-    def __extract_api_data(self):
-        __extract_api_data=None
+    def _extract_api_data(self):
+        _extract_api_data=None
         data_source_name = self.data_source_name
         if data_source_name.lower() == "openalex":
-            __extract_api_data = openalex_fetch_and_save(self.row)
+            _extract_api_data = openalex_fetch_and_save(self.row)
         elif data_source_name.lower() == "reqres":
-            __extract_api_data = reqres_fetch_and_save(self.row)
-        return __extract_api_data
+            _extract_api_data = reqres_fetch_and_save(self.row)
+        return _extract_api_data
 
-    def __extract_csv_file(self):
+    def _extract_csv_file(self):
         return file_fetch_and_save(self.row)
 
 
-    def __parquet_file(self):
+    def _parquet_file(self):
         df = pd.read_parquet(self.file_path)
         print(f"[{self.job_inst_id}] Parquet loaded: {df.shape[0]} rows, {df.shape[1]} columns")
         return df.shape[0]
 
 
 
-    def __transform_mssql(self) :
+    def _transform_mssql(self) :
 
         """
         Purpose:
@@ -349,7 +350,7 @@ class JobTask:
         log_info(job_inst_id=self.job_inst_id
                  , task_name="transform"
                  , info_message=f"target || {self.engine_tgt}"
-                 , context="__transform_mssql()"
+                 , context="_transform_mssql()"
                  )
         print(f"target || {self.engine_tgt}")
 
@@ -385,12 +386,12 @@ class JobTask:
             log_error(job_inst_id=self.job_inst_id
                       , task_name="transform"
                       , error_message=str(e)
-                      , context="__transform_mssql()"
+                      , context="_transform_mssql()"
                       )
             log_job_task(self.job_inst_task_id, "failed")  # [metadata].[job_inst_task] table
             raise
 
-    def __load_mssql(self) :
+    def _load_mssql(self) :
 
         """
         Purpose:
@@ -405,7 +406,7 @@ class JobTask:
         log_info(job_inst_id=self.job_inst_id
                  , task_name="load"
                  , info_message=f"target || {self.engine_tgt}"
-                 , context="__load_mssql()"
+                 , context="_load_mssql()"
                  )
         print(f"target || {self.engine_tgt}")
 
@@ -440,7 +441,7 @@ class JobTask:
             log_error(job_inst_id=self.job_inst_id
                       , task_name="load"
                       , error_message=str(e)
-                      , context="__load_mssql()"
+                      , context="_load_mssql()"
                       )
             log_job_task(self.job_inst_task_id, "failed")  # [metadata].[job_inst_task] table
             raise
