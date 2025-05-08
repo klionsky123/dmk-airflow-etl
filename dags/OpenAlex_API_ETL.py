@@ -16,8 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../util
 # From the module helper.py, inside the package utils, import these functions:
 from helper import (get_engine_for_metadata, log_error, log_info, log_job_task,complete_job
                 , get_all_job_inst_tasks, create_job_inst_and_log, get_job_inst_info)
-from process_task import (process_extract_csv_file,process_extract_task_mssql, process_api_data,process_transform_task_mssql
-,process_load_task_mssql)
+from process_task import JobTask
 sys.path.append('/opt/airflow/utils')
 
 
@@ -50,85 +49,28 @@ def fetch_job_params(job_inst_id: int) -> dict:
 @task_group
 def etl_group(job_data: dict):
     @task
-    def extract(data):
-        print(data)
+    def extract(job_data):
+        print(job_data)
 
-        if 'E' not in data['etl_steps'].upper():
+        if 'E' not in job_data['etl_steps'].upper():
             print(f"Skipping 'E' step")
-            log_info(job_inst_id=data['job_inst_id']
-                     , task_name= 'etl_group'
-                     , info_message=f"Skipping 'E' step"
-                     , context="extract()"
-                     )
+            log_info(job_inst_id=job_data['job_inst_id'],
+                     task_name='etl_group',
+                     info_message="Skipping 'E' step",
+                     context="extract()")
             return
 
-        job_inst_id = data['job_inst_id']
-        step_name = "extract"
-        etl_step = "E"
+        job_inst_id = job_data['job_inst_id']
+        etl_step = "E"  # for Extract
 
         try:
-            engine = get_engine_for_metadata()
-
-            # Get all tasks for the current job instance:
-            # @p_etl_step ="E", for extract
-            rows = get_all_job_inst_tasks(job_inst_id, etl_step)
-
-            for row in rows:
-                job_inst_task_id = row["job_inst_task_id"]
-                job_task_name = row["job_task_name"]
-                source_table = row["src_fully_qualified_tbl_name"]
-                target_table = row["tgt_fully_qualified_tbl_name"]
-
-                print(f"Started || {job_task_name}  || {source_table} --> {target_table}")
-                log_info(job_inst_id=job_inst_id
-                         , task_name=job_task_name
-                         , info_message=f"Started || {job_task_name}  ||  {source_table} --> {target_table}"
-                         , context="extract()")
-
-                conn_type = row["conn_type"].lower()
-
-                try:
-                    if  conn_type == "db":
-                        db_type = row["db_type"].lower()
-                        if "mssql" in db_type:
-                            row_count = process_extract_task_mssql(row)
-
-                    # REST API + Headers + Payload:
-                    elif "api" in conn_type:
-                       process_api_data(row)
-
-                    elif conn_type == "file":
-                        row_count=process_extract_csv_file(row)
-                        # file_path = row["file_path"]
-                        # df = pd.read_csv(file_path)
-                        # print(f"[{job_inst_id}] CSV loaded: {df.shape[0]} rows, {df.shape[1]} columns")
-
-                    elif conn_type == "parquet":
-                        file_path = row["file_path"]
-                        df = pd.read_parquet(file_path)
-                        print(f"[{job_inst_id}] Parquet loaded: {df.shape[0]} rows, {df.shape[1]} columns")
-
-                    else:
-                        print(f"[{job_inst_id}] Unknown connection_type: {conn_type}")
-                except Exception as e:
-                    print(f"[{job_inst_id}] Extract task [{row.get('job_task_name')}] failed: {e}")
-                    log_error(job_inst_id, step_name, str(e), "extract()")  # [metadata].[log_dtl] table
-                    complete_job(job_inst_id, success=False)                # [metadata].[log_header] table
-                    raise
-
-                # report success:
-                log_job_task(job_inst_task_id, "succeeded")  # [metadata].[job_inst_task] table
-
-                print(f"{job_task_name} task succeeded")
-                log_info(job_inst_id=job_inst_id
-                         , task_name='extract'
-                         , info_message=f"{job_task_name} task succeeded"
-                         , context="extract()"
-                         )
+            # 1. Get all tasks for the current job instance
+            # 2. Process them in a loop one task at a time
+            [JobTask(__task).process() for __task in get_all_job_inst_tasks(job_inst_id, etl_step)]
 
         except Exception as e:
-            log_error(data['job_inst_id'], "extract", str(e), "extract()")      # [metadata].[log_dtl] table
-            complete_job(data['job_inst_id'], success=False)                    # [metadata].[log_header] table
+            log_error(job_inst_id, "extract", str(e), "extract()")
+            complete_job(job_inst_id, success=False)
             raise
 
     @task
@@ -147,48 +89,15 @@ def etl_group(job_data: dict):
                      )
             return
 
-
-
-
         try:
+            # 1. Get all tasks for the current job instance
+            # 2. Process them in a loop one task at a time
+            [JobTask(__task).process() for __task in get_all_job_inst_tasks(job_inst_id, etl_step)]
 
-            # Get all tasks for the current job instance:
-            # @p_etl_step ="T", for extract
-            rows = get_all_job_inst_tasks(job_inst_id, etl_step)
-
-            for row in rows:
-                job_inst_task_id = row["job_inst_task_id"]
-                job_task_name = row["job_task_name"]
-                source_table = row["src_fully_qualified_tbl_name"]
-                target_table = row["tgt_fully_qualified_tbl_name"]
-
-                print(f"Processing 'T' step || {source_table} --> {target_table}")
-                log_info(job_inst_id=job_inst_id
-                         , task_name=job_task_name
-                         , info_message=f"Processing || {source_table} --> {target_table}"
-                         , context="transform()"
-                         )
-
-
-                try:
-                        process_transform_task_mssql(
-                            job_inst_id=job_inst_id,
-                            job_inst_task_id=job_inst_task_id,
-                            conn_str=row["conn_str"],
-                            sql_text=row["sql_text"]
-                        )
-                except Exception as e:
-                        print(f"[{job_inst_id}] transform task [{job_task_name}] failed: {e}")
-                        log_error(job_inst_id, "transform", str(e), "transform()")  # [metadata].[log_dtl] table
-                        complete_job(job_inst_id, success=False)  # [metadata].[log_header] table
-                        raise
-                #report success:
-                log_job_task(job_inst_task_id, "succeeded")  # [metadata].[job_inst_task] table
         except Exception as e:
-            log_error(job_inst_id, "transform", str(e), "transform()")  # [metadata].[log_dtl] table
-            complete_job(job_inst_id, success=False)  # [metadata].[log_header] table
-            raise
-
+                log_error(job_inst_id, "transform", str(e), "transform()")  # [metadata].[log_dtl] table
+                complete_job(job_inst_id, success=False)  # [metadata].[log_header] table
+                raise
 
     @task
     def load(data):
@@ -204,43 +113,13 @@ def etl_group(job_data: dict):
                      )
             return
         try:
-
-            # Get all tasks for the current job instance:
-            # @p_etl_step ="L", for load
-            rows = get_all_job_inst_tasks(job_inst_id, etl_step)
-
-            for row in rows:
-                job_inst_task_id = row["job_inst_task_id"]
-                job_task_name = row["job_task_name"]
-                source_table = row["src_fully_qualified_tbl_name"]
-                target_table = row["tgt_fully_qualified_tbl_name"]
-
-                print(f"Processing 'L' step || {source_table} --> {target_table}")
-                log_info(job_inst_id=job_inst_id
-                         , task_name=job_task_name
-                         , info_message=f"Processing || {source_table} --> {target_table}"
-                         , context="load()"
-                         )
-
-
-                try:
-                        process_load_task_mssql(
-                            job_inst_id=job_inst_id,
-                            job_inst_task_id=job_inst_task_id,
-                            conn_str=row["conn_str"],
-                            sql_text=row["sql_text"]
-                        )
-                except Exception as e:
-                        print(f"[{job_inst_id}] load task [{job_task_name}] failed: {e}")
-                        log_error(job_inst_id, "load", str(e), "load()")  # [metadata].[log_dtl] table
-                        complete_job(job_inst_id, success=False)  # [metadata].[log_header] table
-                        raise
-                #report success:
-                log_job_task(job_inst_task_id, "succeeded")  # [metadata].[job_inst_task] table
+            # 1. Get all tasks for the current job instance
+            # 2. Process them in a loop one task at a time
+            [JobTask(__task).process() for __task in get_all_job_inst_tasks(job_inst_id, etl_step)]
         except Exception as e:
-            log_error(job_inst_id, "load", str(e), "load()")  # [metadata].[log_dtl] table
-            complete_job(job_inst_id, success=False)  # [metadata].[log_header] table
-            raise
+                log_error(job_inst_id, "load", str(e), "load()")  # [metadata].[log_dtl] table
+                complete_job(job_inst_id, success=False)  # [metadata].[log_header] table
+                raise
 
     # Define tasks
     extracted = extract(p_job_data)
