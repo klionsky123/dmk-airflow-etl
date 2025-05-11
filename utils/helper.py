@@ -1,19 +1,23 @@
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
+from airflow.hooks.base import BaseHook
 
 """
 Connection to the metadata server
 """
 def get_engine_for_metadata():
-    pwd = "xxxxxx" 
-    uid = "xxx" 
-    driver = "{ODBC Driver 17 for SQL Server}"
-    server = "xxx.xxx.xx.xx"
-    database = "dmk_stage_db"
-    connection_string = f"DRIVER={driver};SERVER={server};DATABASE={database};UID={uid};PWD={pwd}"
+    conn = BaseHook.get_connection("dmk-stage-db-id")
+    connection_string = f"DRIVER={{ODBC Driver 17 for SQL Server}};" \
+                        f"SERVER={conn.host};" \
+                        f"DATABASE={conn.schema};" \
+                        f"UID={conn.login};" \
+                        f"PWD={conn.password}"
+    # connection_string = f"DRIVER={driver};SERVER={server};DATABASE={database};UID={uid};PWD={pwd}"
     connection_url = URL.create("mssql+pyodbc", query={"odbc_connect": connection_string})
     return create_engine(connection_url)
+
+
 
 """
 Write to db log

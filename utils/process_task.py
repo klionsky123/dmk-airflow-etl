@@ -5,12 +5,14 @@ import sys
 from lib2to3.fixes.fix_except import find_excepts
 
 import pandas as pd
+from airflow.hooks.base import BaseHook
 from sqlalchemy import create_engine, text
-
-from helper import get_engine_for_metadata, log_error, log_info, log_job_task, complete_job
+from sqlalchemy.engine import URL
+from helper import get_engine_for_metadata, log_error, log_info, log_job_task
 from open_alex_api import openalex_fetch_and_save
 from reqres_api import reqres_fetch_and_save
 from flat_file_utils import file_fetch_and_save
+from kafka_consumer import *
 """
 #####################################################################
 # A Processing that is based on the data source type.
@@ -57,6 +59,10 @@ class JobTask:
         self.incr_column = row.get("incr_column")
         ################## REST API RELATED: ########################
         self.data_source_name = row["data_source_name"]
+        ################## KAFKA RELATED: ########################
+        self.topic = row['kafka_topic']
+        self.bootstrap = row.get('kafka_bootstrap_servers', 'localhost:9092')
+        self.group_id = row.get('kafka_group_id', 'etl-group')
 
     def process(self):
         print(f"Started task || {self.job_task_name} || {self.source_table} --> {self.target_table}")
@@ -76,6 +82,8 @@ class JobTask:
                         self._extract_csv_file()
                 elif self.conn_type == "parquet":
                         self._parquet_file()
+                elif self.conn_type == "kafka":
+                        self._extract_kafka_data()
                 else:
                     print(f"[{self.job_inst_id}] Unknown connection_type: {self.conn_type}")
             elif self.etl_step == "T":
@@ -97,6 +105,17 @@ class JobTask:
                  info_message=f"Finished task || {self.job_task_name} ",
                  context="JobTask.process()")
         return None
+
+    def _extract_kafka_data(self):
+
+        consumer = KafkaETLConsumer(
+            topic=self.topic,
+            bootstrap_servers=self.bootstrap,
+            group_id=self.group_id,
+            sql_table=self.target_table,
+            batch_size=100
+        )
+        consumer.run(max_messages=1000)  # Set limit if you don’t want to consume forever
 
     def _extract_mssql(self):
         """
@@ -172,7 +191,9 @@ class JobTask:
         # not a stored proc:
         else:
             # panda style conn_str: 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=xxx;DATABASE=xxx;UID=xxx;PWD=xxx'
-            _engine_src = create_engine(f"{self.conn_str}")  # Source
+            # no +
+            #_engine_src = create_engine(f"{self.conn_str}")  # Source
+            _engine_src = self._get_engine_for_MsSql()
 
             print(f"source || {_engine_src}")
             log_info(job_inst_id=self.job_inst_id
@@ -180,13 +201,16 @@ class JobTask:
                      , info_message=f"source || {_engine_src}"
                      , context="process_extract_task_mssql()"
                      )
-
+            # add incremental date if it is not a full load:
+            if not self.is_full_load:
+                sql_text = f"{self.sql_text}  and {self.incr_column} >= '{self.incr_date}'"
+            else:
+                sql_text = self.sql_text
+            print(f"SQL Statement || {sql_text}")
             try:
                 with _engine_src.connect() as conn_src:
-                    # add incremental date if it is not a full load:
-                    sql_text = f"{self.sql_text}  and {self.incr_column} >= '{self.incr_date}'" if not self.is_full_load else self.sql_text
-                    print(sql_text)
-                    df = pd.read_sql(text(sql_text), con=conn_src)
+
+                    df = pd.read_sql(sql_text, con=conn_src.execution_options(stream_results=True))
                     if self.is_large:
                         # Write to CSV
                         # file_path = f"//XXX.XXX.XX.XX/shared/bulk_files/{target_table.replace('.', '_')}_{timestamp}.csv"
@@ -259,7 +283,6 @@ class JobTask:
                         with self.engine_tgt.connect() as conn_tgt:
                             # Create empty temp table
                             # df.head(0) gives the column structure without rows.
-                            # if_exists="replace" drops and recreates the table if it already exists.
                             df.head(0).to_sql(temp_table, con=conn_tgt, if_exists="replace", index=False)
 
                             # Insert data
@@ -445,3 +468,14 @@ class JobTask:
                       )
             log_job_task(self.job_inst_task_id, "failed")  # [metadata].[job_inst_task] table
             raise
+
+    def _get_engine_for_MsSql(self) :
+        # MS-SQL-Server data source sample connection
+        conn = BaseHook.get_connection("DB-29907-kliondb2017-id")
+        connection_string = f"DRIVER={{ODBC Driver 17 for SQL Server}};" \
+                            f"SERVER={conn.host};" \
+                            f"DATABASE={conn.schema};" \
+                            f"UID={conn.login};" \
+                            f"PWD={conn.password}"
+        connection_url = URL.create("mssql+pyodbc", query={"odbc_connect": connection_string})
+        return create_engine(connection_url)
