@@ -1,18 +1,16 @@
-import shutil
 from datetime import datetime
 import os
-import sys
-from lib2to3.fixes.fix_except import find_excepts
-
+import inspect
 import pandas as pd
 from airflow.hooks.base import BaseHook
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
-from helper import get_engine_for_metadata, log_error, log_info, log_job_task
+from helper import log_error, log_info, log_job_task, get_engine_for_metadata
 from open_alex_api import openalex_fetch_and_save
 from reqres_api import reqres_fetch_and_save
 from flat_file_utils import file_fetch_and_save
-from kafka_consumer import *
+from kafka_consumer import KafkaETLConsumer
+from kafka.errors import UnknownTopicOrPartitionError
 """
 #####################################################################
 # A Processing that is based on the data source type.
@@ -108,14 +106,22 @@ class JobTask:
 
     def _extract_kafka_data(self):
 
-        consumer = KafkaETLConsumer(
-            topic=self.topic,
-            bootstrap_servers=self.bootstrap,
-            group_id=self.group_id,
-            sql_table=self.target_table,
-            batch_size=100
-        )
-        consumer.run(max_messages=1000)  # Set limit if you don’t want to consume forever
+        try:
+
+            consumer = KafkaETLConsumer(
+                topic=self.topic,
+                bootstrap_servers=self.bootstrap,
+                group_id=self.group_id,
+                sql_table=self.target_table,
+                batch_size=100
+            )
+            consumer.run(max_messages=1000)  # Set limit if you don’t want to consume forever
+
+        except UnknownTopicOrPartitionError:
+            print(f"Error: The topic || {self.topic} || does not exist. Check Kafka settings.")
+        except Exception as e:
+            print(f"An unexpected error or exception occurred: {e}")
+            raise Exception(f"Kafka consumer failed: {e}")
 
     def _extract_mssql(self):
         """
@@ -132,7 +138,7 @@ class JobTask:
         log_info(job_inst_id=self.job_inst_id
                  , task_name=self.job_task_name
                  , info_message=f"target || {self.engine_tgt}"
-                 , context="process_extract_task_mssql()"
+                 , context=f"{inspect.currentframe().f_code.co_name}"
                  )
 
         print(f"target || {self.engine_tgt}")
@@ -143,7 +149,7 @@ class JobTask:
         log_info(job_inst_id=self.job_inst_id
                  , task_name=self.job_task_name
                  , info_message=f"SQL Statement || {self.sql_text}"
-                 , context="process_extract_task_mssql()"
+                 , context=f"{inspect.currentframe().f_code.co_name}"
                  )
 
         # if stored procedure :
@@ -157,7 +163,7 @@ class JobTask:
             log_info(job_inst_id=self.job_inst_id
                      , task_name=self.job_task_name
                      , info_message=f"source || {_engine_src}"
-                     , context="process_extract_task_mssql()"
+                     , context=f"{inspect.currentframe().f_code.co_name}"
                      )
 
             try:
@@ -184,7 +190,7 @@ class JobTask:
                 log_error(job_inst_id=self.job_inst_id
                           , task_name="extract"
                           , error_message=str(e)
-                          , context="process_extract_task_mssql()"
+                          , context=f"{inspect.currentframe().f_code.co_name}"
                           )
                 log_job_task(self.job_inst_task_id, "failed")  # [metadata].[job_inst_task] table
                 raise
@@ -199,7 +205,7 @@ class JobTask:
             log_info(job_inst_id=self.job_inst_id
                      , task_name=self.job_task_name
                      , info_message=f"source || {_engine_src}"
-                     , context="process_extract_task_mssql()"
+                     , context=f"{inspect.currentframe().f_code.co_name}"
                      )
             # add incremental date if it is not a full load:
             if not self.is_full_load:
@@ -243,7 +249,7 @@ class JobTask:
                         log_info(job_inst_id=self.job_inst_id
                                  , task_name=self.job_task_name
                                  , info_message=f"SQL Statement || {bulk_insert_sql}"
-                                 , context="process_extract_task_mssql()"
+                                 , context=f"{inspect.currentframe().f_code.co_name}"
                                  )
 
                         with self.engine_tgt.connect() as conn_tgt:
@@ -257,7 +263,7 @@ class JobTask:
                             log_info(job_inst_id=self.job_inst_id
                                      , task_name=self.job_task_name
                                      , info_message=f"Target table [{self.target_table}] || inserted {row_count} rows"
-                                     , context="process_extract_task_mssql()"
+                                     , context=f"{inspect.currentframe().f_code.co_name}"
                                      )
 
                         # Delete temp file if needed
@@ -268,7 +274,7 @@ class JobTask:
                             log_info(job_inst_id=self.job_inst_id
                                      , task_name=self.job_task_name
                                      , info_message=f"Dropped {file_path}"
-                                     , context="process_extract_task_mssql()"
+                                     , context=f"{inspect.currentframe().f_code.co_name}"
                                      )
 
                     else:
@@ -295,7 +301,7 @@ class JobTask:
                             log_info(job_inst_id=self.job_inst_id
                                      , task_name=self.job_task_name
                                      , info_message=f"SQL Statement || {insert_sql}"
-                                     , context="process_extract_task_mssql()"
+                                     , context=f"{inspect.currentframe().f_code.co_name}"
                                      )
 
                             result = conn_tgt.execute(text(insert_sql))
@@ -304,7 +310,7 @@ class JobTask:
                             log_info(job_inst_id=self.job_inst_id
                                      , task_name=self.job_task_name
                                      , info_message=f"Target table [{self.target_table}] || inserted {rowcount} rows"
-                                     , context="process_extract_task_mssql()"
+                                     , context=f"{inspect.currentframe().f_code.co_name}"
                                      )
 
                             # Drop temp table if requested
@@ -315,14 +321,14 @@ class JobTask:
                                     log_info(job_inst_id=self.job_inst_id
                                              , task_name=self.job_task_name
                                              , info_message=f"Dropped temp table || {temp_table}"
-                                             , context="process_extract_task_mssql()"
+                                             , context=f"{inspect.currentframe().f_code.co_name}"
                                              )
                                 except Exception as drop_err:
                                     print(f"Warning: Failed to drop temp table {temp_table}: {drop_err}")
                                     log_error(job_inst_id=self.job_inst_id
                                               , task_name=self.job_task_name
                                               , error_message=f"Failed to drop temp table {temp_table}: {drop_err}"
-                                              , context="process_extract_task_mssql()"
+                                              , context=f"{inspect.currentframe().f_code.co_name}"
                                               )
                                     log_job_task(self.job_inst_task_id, "failed")  # [metadata].[job_inst_task] table
 
@@ -333,7 +339,7 @@ class JobTask:
                 log_error(job_inst_id=self.job_inst_id
                           , task_name=self.job_task_name
                           , error_message=str(e)
-                          , context="process_extract_task_mssql()"
+                          , context=f"{inspect.currentframe().f_code.co_name}"
                           )
                 log_job_task(self.job_inst_task_id, "failed")  # [metadata].[job_inst_task] table
                 raise
@@ -371,9 +377,9 @@ class JobTask:
         log_job_task(self.job_inst_task_id, "running")  # [metadata].[job_inst_task] table
 
         log_info(job_inst_id=self.job_inst_id
-                 , task_name="transform"
+                 , task_name=f"{self.job_task_name}"
                  , info_message=f"target || {self.engine_tgt}"
-                 , context="_transform_mssql()"
+                 , context=f"{inspect.currentframe().f_code.co_name}"
                  )
         print(f"target || {self.engine_tgt}")
 
@@ -407,9 +413,9 @@ class JobTask:
         except Exception as e:
             # [metadata].[log_dtl] table:
             log_error(job_inst_id=self.job_inst_id
-                      , task_name="transform"
+                      , task_name=f"{self.job_task_name}"
                       , error_message=str(e)
-                      , context="_transform_mssql()"
+                      , context=f"{inspect.currentframe().f_code.co_name}"
                       )
             log_job_task(self.job_inst_task_id, "failed")  # [metadata].[job_inst_task] table
             raise
@@ -427,9 +433,9 @@ class JobTask:
 
 
         log_info(job_inst_id=self.job_inst_id
-                 , task_name="load"
+                 , task_name=f"{self.job_task_name}"
                  , info_message=f"target || {self.engine_tgt}"
-                 , context="_load_mssql()"
+                 , context=f"{inspect.currentframe().f_code.co_name}"
                  )
         print(f"target || {self.engine_tgt}")
 
@@ -462,9 +468,9 @@ class JobTask:
         except Exception as e:
             # [metadata].[log_dtl] table:
             log_error(job_inst_id=self.job_inst_id
-                      , task_name="load"
+                      , task_name=f"{self.job_task_name}"
                       , error_message=str(e)
-                      , context="_load_mssql()"
+                      , context=f"{inspect.currentframe().f_code.co_name}"
                       )
             log_job_task(self.job_inst_task_id, "failed")  # [metadata].[job_inst_task] table
             raise

@@ -2,6 +2,10 @@ from kafka import KafkaConsumer
 from sqlalchemy import create_engine
 import pandas as pd
 import json
+
+from tenacity import retry
+from urllib3 import Retry
+
 from helper import get_engine_for_metadata
 
 class KafkaETLConsumer:
