@@ -51,7 +51,7 @@ They provide support for
 - `Large vs. Small Data Strategies` resulting in the different approaches for performance.
 - Task-level activation on/off-switches without modifying the overall job
 - Configurable cleanup for the temp structures (staging tables, flat files) via metadata on/off-switches; helpful for debugging and research.
-- Full logging (in addition to Apache Airlfow logging).
+- Full db logging tied to each job execution id.
 
 ### ETL-Metadata-tables schema 
 
