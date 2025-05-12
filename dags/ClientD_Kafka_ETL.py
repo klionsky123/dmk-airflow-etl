@@ -1,11 +1,11 @@
 from datetime import datetime
 import os
 import sys
+import inspect
 from airflow import DAG
 from airflow.decorators import task, task_group
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../utils')))
-# From the module helper.py, inside the package utils, import these functions:
 from helper import (get_engine_for_metadata, log_error, log_info, log_job_task,complete_job
                 , get_all_job_inst_tasks, create_job_inst_and_log, get_job_inst_info)
 from process_task import JobTask
@@ -25,7 +25,7 @@ def start_job(job_id: int)-> int:
 def finalize_job(job_data:dict):
     # Mark job completion:
     log_info(job_data['job_inst_id'], 'finalize_job'
-             , "*** FINISHED", context="finalize_job()", task_status="succeeded")
+             , "*** FINISHED", context=f"{inspect.currentframe().f_code.co_name}", task_status="succeeded")
 
     complete_job(job_inst_id=job_data["job_inst_id"], success=True)
 
@@ -47,9 +47,9 @@ def etl_group(job_data: dict):
         if 'E' not in job_data['etl_steps'].upper():
             print(f"Skipping 'E' step")
             log_info(job_inst_id=job_data['job_inst_id'],
-                     task_name='etl_group',
+                     task_name='extract',
                      info_message="Skipping 'E' step",
-                     context="extract()")
+                     context=f"{inspect.currentframe().f_code.co_name}")
             return
 
         job_inst_id = job_data['job_inst_id']
@@ -75,9 +75,9 @@ def etl_group(job_data: dict):
         if 'T' not in data['etl_steps'].upper():
             print(f"Skipping 'T' step")
             log_info(job_inst_id=job_inst_id
-                     , task_name= 'etl_group'
+                     , task_name= 'transform'
                      , info_message=f"Skipping 'T' step"
-                     , context="transform()"
+                     , context=f"{inspect.currentframe().f_code.co_name}"
                      )
             return
 
@@ -87,7 +87,8 @@ def etl_group(job_data: dict):
             [JobTask(_task).process() for _task in get_all_job_inst_tasks(job_inst_id, etl_step)]
 
         except Exception as e:
-                log_error(job_inst_id, "transform", str(e), "transform()")  # [metadata].[log_dtl] table
+                log_error(job_inst_id, "transform", str(e),
+                          f"{inspect.currentframe().f_code.co_name}")  # [metadata].[log_dtl] table
                 complete_job(job_inst_id, success=False)  # [metadata].[log_header] table
                 raise
 
@@ -99,9 +100,9 @@ def etl_group(job_data: dict):
         if 'L' not in data['etl_steps'].upper():
             print(f"Skipping 'L' step")
             log_info(job_inst_id=job_inst_id
-                     , task_name= 'etl_group'
+                     , task_name= 'load'
                      , info_message=f"Skipping 'L' step"
-                     , context="load()"
+                     , context=f"{inspect.currentframe().f_code.co_name}"
                      )
             return
         try:
@@ -109,7 +110,9 @@ def etl_group(job_data: dict):
             # 2. Process them in a loop one task at a time
             [JobTask(_task).process() for _task in get_all_job_inst_tasks(job_inst_id, etl_step)]
         except Exception as e:
-                log_error(job_inst_id, "load", str(e), "load()")  # [metadata].[log_dtl] table
+                log_error(job_inst_id, "load", str(e),
+                    f"{inspect.currentframe().f_code.co_name}")  # [metadata].[log_dtl] table
+
                 complete_job(job_inst_id, success=False)  # [metadata].[log_header] table
                 raise
 
