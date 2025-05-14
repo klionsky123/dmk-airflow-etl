@@ -3,7 +3,7 @@ go
 
 CREATE OR ALTER PROCEDURE [metadata].[sp_get_job_inst_task] (
 	@p_job_inst_id int ,
-	@p_etl_step varchar(1) = 'E', /* values: E or T or L */
+	@p_etl_step varchar(4) = 'E', /* values: E or T or L , NONE - for non-etl jobs */
 	@p_job_inst_task_id int = 0
 
 
@@ -20,12 +20,13 @@ AS
 * Modified:
 
 * Example of usage:
-* execute [metadata].[sp_get_job_inst_task] 241, 'E',0
+* execute [metadata].[sp_get_job_inst_task] 428, 'e',0
 ********************************************************/
 
 -- SET NOCOUNT to ON and no longer display the count message.
 SET NOCOUNT ON
 
+PRINT @p_etl_step
 
 BEGIN TRY
 
@@ -83,14 +84,29 @@ SELECT jit.[job_inst_task_id]
 	  ,ji.[etl_steps]
 	  ,ji.[is_full_load]
 	  ,ji.[del_temp_data]
+	  ,j.job_type
+
+	  /*kafka related */
+	   ,kafka_topic = kafka.topic
+	   /* Docker Networking: By default, Docker Compose creates a network where services can reach each other by container name. 
+	      So, from the Airflow container, you should connect to kafka:9092, not localhost:9092  */
+       ,kafka_bootstrap_servers=  kafka.bootstrap_servers /* 'kafka:9092'  and theses do not work : 'localhost:9092' or '127.0.0.1:9092' */
+       ,kafka_group_id= kafka.group_id  /* e.g. 'etl-group' */
+	   ,is_kafka_consumer =kafka.is_consumer /*consumer or producer */
+	   ,kafka_batch_record_size = kafka.batch_record_size
+	   ,kafka.max_message_num
+	   ,kafka_topic_pattern = kafka.topic_pattern
+
   
   FROM [metadata].[job_inst_task] jit 
   left outer join [metadata].[job_task] jt on jit.job_task_id = jt.job_task_id
   left outer join [metadata].[job_inst] ji on ji.job_inst_id = jit.job_inst_id
+  left outer join [metadata].[job] j on ji.job_id = j.job_id
   left outer join [metadata].[tbl] t1 on t1.tbl_id = jt.src_tbl_id
   left outer join [metadata].[tbl] t2 on t2.tbl_id = jt.tgt_tbl_id
   left outer join [metadata].[conn_str] cs on jt.[conn_str_id] = cs.conn_str_id
   left outer join [metadata].[conn_api] api on jt.[conn_api_id] = api.[conn_api_id]
+  left outer join [metadata].[conn_kafka] kafka on jt.[conn_kafka_id] = kafka.[conn_kafka_id]
   left outer join [metadata].[sql_script] ss on jt.[sql_script_id] = ss.sql_script_id
   left outer join [metadata].[data_source] ds on api.data_source_id =ds.data_source_id
 

@@ -64,13 +64,14 @@ drop table if exists metadata.job
 drop table if exists metadata.tbl
 drop table if exists metadata.conn_str
 drop table if exists metadata.conn_api
+drop table if exists  metadata.conn_kafka
 drop table if exists metadata.date_source
 drop table if exists metadata.sql_script
 go
 create table metadata.data_source(
  data_source_id int identity not null
 ,data_source_name varchar(256) not null
-,[data_source_type] [varchar](256) NOT NULL default 'db' CHECK ([data_source_type] IN ('api', 'db', 'file')) -- enforce type,
+,[data_source_type] [varchar](256) NOT NULL default 'db' CHECK ([data_source_type] IN ('api', 'db', 'file', 'kafka')) -- enforce type,
 ,descr varchar(max) null
 ,date_created smalldatetime not null default getdate()
 ,date_updated smalldatetime null
@@ -130,7 +131,26 @@ CREATE TABLE [metadata].[conn_api] (
 	date_created smalldatetime not null default getdate(),
 	date_updated smalldatetime null
 )
+go
 
+
+create table metadata.conn_kafka(
+	 conn_kafka_id int identity not null
+	,topic varchar(256) not null		/* Kafka topic to consume messages from */
+	,topic_pattern varchar(256)  null		/* Kafka topic patter to subscribe e.g. test-.* */
+	,data_source_id int not null CONSTRAINT metadata_conn_kafka_FK2 FOREIGN KEY REFERENCES metadata.data_source(data_source_id)
+	,bootstrap_servers varchar(512) not null /* List of Kafka brokers (e.g., localhost:9092) */
+	,group_id varchar(128) not null /* Consumer group ID for Kafka offset tracking */
+	,batch_record_size int null    /* Number of records to buffer before writing to the database (default is 100), for consumer */
+	,max_message_num int null default 1000 /* # Set limit if we don’t want to consume forever */
+	,is_consumer bit not null default 1 /* consumer or producer */
+	,descr varchar(max) null
+	,date_created smalldatetime not null default getdate()
+	,date_updated smalldatetime null
+	,CONSTRAINT metadata_conn_kafka_PK PRIMARY KEY (conn_kafka_id)
+	,CONSTRAINT metadata_conn_kafka_UQ UNIQUE (topic, is_consumer)
+)
+go
 
 create table metadata.conn_str(
 	 conn_str_id int identity not null
@@ -172,8 +192,7 @@ create table metadata.job(
 ,etl_steps varchar(4) not null default 'NONE' check (etl_steps in ('NONE', 'ETL','E','TL'))
 ,is_full_load bit not null default 1
 ,del_temp_data bit not null default 1 /* for all tasks to conditionally delete temp table (for small datasets)/CSV file (for large datasets) */
-,request_date smalldatetime null
-,job_type varchar(4) default 'etl' check (job_type in ('etl', 'non-etl'))
+,job_type varchar(8) NULL default 'etl' check (job_type in ('etl', 'non-etl'))
 ,date_created smalldatetime not null default getdate()
 ,date_updated smalldatetime null
 ,CONSTRAINT metadata_job_PK PRIMARY KEY (job_id)
@@ -191,7 +210,8 @@ create table metadata.job_task(
 ,step_seq int not null default 1
 ,sql_script_id int null CONSTRAINT metadata_job_task_FK6 FOREIGN KEY REFERENCES metadata.sql_script(sql_script_id)
 ,conn_api_id int null CONSTRAINT metadata_job_task_FK5 FOREIGN KEY REFERENCES metadata.conn_api(conn_api_id)
-,conn_type varchar(16) not null default 'db' check (conn_type in ('db', 'api','file') )
+,conn_kafka_id int null CONSTRAINT metadata_job_task_FK7 FOREIGN KEY REFERENCES metadata.conn_kafka(conn_kafka_id)
+,conn_type varchar(16) not null default 'db' check (conn_type in ('db', 'api','file','kafka') )
 ,conn_str_id int null CONSTRAINT metadata_job_task_FK2 FOREIGN KEY REFERENCES metadata.conn_str(conn_str_id)
 ,src_tbl_id int not null CONSTRAINT metadata_job_task_FK3 FOREIGN KEY REFERENCES metadata.tbl(tbl_id)
 ,tgt_tbl_id int not null CONSTRAINT metadata_job_task_FK4 FOREIGN KEY REFERENCES metadata.tbl(tbl_id)
