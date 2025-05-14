@@ -248,4 +248,19 @@ def get_job_inst_info(job_inst_id: int)->dict:
             )
             raise Exception(f"No job parameters found for job_inst_id: {job_inst_id}")
 
+def parse_table_name(full_name):
+    parts = full_name.split('.')
+    if len(parts) == 3:
+        db, schema, table = parts
+    elif len(parts) == 2:
+        schema, table = parts
+    elif len(parts) == 1:
+        schema = 'dbo'
+        table = parts[0]
+    else:
+        raise ValueError("Unrecognized table format")
+    return schema, table
+
+
+
 

@@ -1,6 +1,7 @@
 from datetime import datetime
 import os
 import inspect
+import json
 import pandas as pd
 from airflow.hooks.base import BaseHook
 from sqlalchemy import create_engine, text
@@ -11,6 +12,7 @@ from reqres_api import reqres_fetch_and_save
 from flat_file_utils import file_fetch_and_save
 from kafka_consumer import KafkaETLConsumer
 from kafka.errors import UnknownTopicOrPartitionError
+from kafka_producer_client import KafkaProducerClient
 """
 #####################################################################
 # A Processing that is based on the data source type.
@@ -45,6 +47,7 @@ class JobTask:
         self.db_type = row.get("db_type", "").lower() if row.get("db_type") else None
         self.file_path = row.get("file_path")
         self.etl_step = row.get("etl_step")
+        self.job_type = row.get("job_type").lower() if row.get("job_type") else None
         self.engine_tgt = get_engine_for_metadata()  # Target
         ################# DATABASE-RELATED: ##############
         self.sql_text = row.get("sql_text")
@@ -59,8 +62,13 @@ class JobTask:
         self.data_source_name = row["data_source_name"]
         ################## KAFKA RELATED: ########################
         self.topic = row['kafka_topic']
-        self.bootstrap = row.get('kafka_bootstrap_servers', 'localhost:9092')
+        # for consumer, store in db as {"pattern": "test-.*"}, first, convert it from str to json
+        self.topic_pattern = json.loads(row['kafka_topic_pattern']).get("pattern", "Key not found") if row['kafka_topic_pattern'] else None
+        self.bootstrap = row.get('kafka_bootstrap_servers', 'kafka:9092')
         self.group_id = row.get('kafka_group_id', 'etl-group')
+        self.is_kafka_consumer = row.get("is_kafka_consumer")
+        self.kafka_batch_record_size = row.get("kafka_batch_record_size")
+        self.max_messages = row.get("max_message_num") # Set limit if we don’t want to consume forever
 
     def process(self):
         print(f"Started task || {self.job_task_name} || {self.source_table} --> {self.target_table}")
@@ -70,24 +78,28 @@ class JobTask:
                  context="JobTask.process()")
 
         try:
-            if self.etl_step == "E":
-                if self.conn_type == "db":
-                    if "mssql" in self.db_type:
-                        self._extract_mssql()
-                elif "api" in self.conn_type:
-                        self._extract_api_data()
-                elif self.conn_type == "file":
-                        self._extract_csv_file()
-                elif self.conn_type == "parquet":
-                        self._parquet_file()
-                elif self.conn_type == "kafka":
-                        self._extract_kafka_data()
-                else:
-                    print(f"[{self.job_inst_id}] Unknown connection_type: {self.conn_type}")
-            elif self.etl_step == "T":
-                return self._transform_mssql()
-            elif self.etl_step == "L":
-                return self._load_mssql()
+            if self.job_type == "non-etl":
+                if self.conn_type == "kafka":
+                    self._kafka_produce_messages()
+            else:   # etl jobs
+                if self.etl_step == "E":
+                    if self.conn_type == "db":
+                        if "mssql" in self.db_type:
+                            self._extract_mssql()
+                    elif "api" in self.conn_type:
+                            self._extract_api_data()
+                    elif self.conn_type == "file":
+                            self._extract_csv_file()
+                    elif self.conn_type == "parquet":
+                            self._parquet_file()
+                    elif self.conn_type == "kafka" and self.is_kafka_consumer:
+                            self._extract_kafka_data()
+                    else:
+                        print(f"[{self.job_inst_id}] Unknown connection_type: {self.conn_type}")
+                elif self.etl_step == "T":
+                        self._transform_mssql()
+                elif self.etl_step == "L":
+                        self._load_mssql()
 
         except Exception as e:
             print(f"[{self.job_inst_id}] Extract task [{self.job_task_name}] failed: {e}")
@@ -104,18 +116,38 @@ class JobTask:
                  context="JobTask.process()")
         return None
 
+    def _kafka_produce_messages(self):
+
+        print(f"[{self.job_inst_id}] reached _kafka_produce_messages")
+
+        producer = KafkaProducerClient(
+            topic=self.topic,
+            msg_count= self.kafka_batch_record_size, # Number of records to buffer
+            bootstrap_servers=self.bootstrap,
+            retries=3,
+            row =self.row  #job task data for db logging
+        )
+
+        producer.generate_fake_data()
+
     def _extract_kafka_data(self):
+
+        print(f"[{self.job_inst_id}] reached _extract_kafka_data")
 
         try:
 
             consumer = KafkaETLConsumer(
                 topic=self.topic,
+                topic_pattern=self.topic_pattern,
                 bootstrap_servers=self.bootstrap,
                 group_id=self.group_id,
                 sql_table=self.target_table,
-                batch_size=100
+                batch_size=self.kafka_batch_record_size, # Number of records to buffer before writing to the database
+                row = self.row  #job task data for db logging
+
             )
-            consumer.run(max_messages=1000)  # Set limit if you don’t want to consume forever
+
+            consumer.run(self.max_messages)  # Set limit if we don’t want to consume forever
 
         except UnknownTopicOrPartitionError:
             print(f"Error: The topic || {self.topic} || does not exist. Check Kafka settings.")
