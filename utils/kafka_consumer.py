@@ -1,4 +1,4 @@
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, KafkaProducer
 from marshmallow.utils import timestamp
 from sqlalchemy import create_engine
 import pandas as pd
@@ -12,15 +12,15 @@ from collections import defaultdict # provides a default value for missing keys.
 
 class KafkaETLConsumer:
     """
-    This a custom Kafka consumer moving a Kafka topic to a SQL table.
-    This s a streaming ingestion from Kafka into a SQL system, in batches.
+    This a custom Kafka consumer moving several Kafka topics to a SQL table.
+    (i.e., a streaming ingestion from Kafka into a SQL system, in batches)
 
     Serialization is the process of converting the state of an object into a form that can be persisted or transported.
     The complement of serialization is deserialization, which converts a stream into an object.
     Together, these processes allow data to be stored and transferred
 
     """
-    def __init__(self, topic: str, topic_pattern: str, bootstrap_servers: str, group_id, sql_table, batch_size=100, row=None):
+    def __init__(self, topic: str, topic_pattern: str, bootstrap_servers: str, group_id, sql_table, dlq_topic=None, batch_size=100, row=None):
         self.topics = topic                          # Kafka topics to consume messages from
         self.topic_pattern = topic_pattern
         self.bootstrap_servers = bootstrap_servers  # List of Kafka brokers (e.g., localhost:9092).
@@ -30,6 +30,7 @@ class KafkaETLConsumer:
         self.group_id = f'airflow-consumer-{uuid.uuid4()}'
         self.sql_table = sql_table
         self.batch_size = batch_size                # Number of records to buffer before writing to the database
+        self.dlq_topic = dlq_topic                  # Dead Letter Que (DLQ)
         self.buffer = []                            # A temporary list holding messages before flushing to the DB
 
         self.job_inst_id = int(row.get("job_inst_id", 0))
@@ -40,11 +41,10 @@ class KafkaETLConsumer:
         self.consumer = KafkaConsumer(
             self.topics,
             bootstrap_servers=self.bootstrap_servers,
-            # Start consuming messages from the beginning of the topic (the oldest available messages).
-            auto_offset_reset='earliest',
+            auto_offset_reset='earliest',       # Start consuming messages from the beginning of the topic (the oldest available messages).
             enable_auto_commit=False,           # Don't auto-commit to avoid skipping on retries
             group_id= self.group_id,            # Consumer group ID for Kafka offset tracking
-            consumer_timeout_ms=15000,          # Stop after 5s if no new messages
+            consumer_timeout_ms=5000,          # Stop after 5s if no new messages
             value_deserializer=lambda x: json.loads(x.decode('utf-8')) # Deserialize message values from JSON
         )
 
@@ -52,7 +52,7 @@ class KafkaETLConsumer:
 
         # If topics is a pattern string, subscribe to topics matching the regex pattern:
         if isinstance(self.topics, str):
-             self.consumer.subscribe(pattern=self.topic_pattern) # pattern=r'test-.*'
+             self.consumer.subscribe(pattern=self.topic_pattern) # e.g., pattern=r'test-.*'
 
         _info_msg =(f"KafkaConsumer initialized successfully; "
                     f"topic_pattern| {self.topic_pattern} | bootstrap_servers| {self.bootstrap_servers}")
@@ -64,12 +64,43 @@ class KafkaETLConsumer:
                  )
         print(_info_msg)
 
+        if self.dlq_topic:
+            self.producer = KafkaProducer(
+                bootstrap_servers=self.bootstrap_servers,
+                value_serializer=lambda x: json.dumps(x).encode('utf-8')
+            )
+        else:
+            self.producer = None
+
+
+    def is_valid(self, record):
+        """Validate record — returns False if any field is null/empty."""
+        return all(value not in [None, "", []] for value in record.values())
+
     def _enhance_message(self, message:dict, group_id:str, topic: str):
         # add group_id & timestamp, topic to the message:
         _timestamp = datetime.now()
         message.update({"group_id": group_id, "date_created": _timestamp, "kafka_topic": topic})
 
         return message
+
+    def handle_bad_message(self, record, error_reason):
+        """Send bad messages to the DLQ Kafka topic if configured."""
+        if self.producer and self.dlq_topic:
+            dlq_record = {
+                "bad_record": record,
+                "error_reason": error_reason
+            }
+            self.producer.send(self.dlq_topic, dlq_record)
+            _info_msg = f"Sent bad record to DLQ: {self.dlq_topic}"
+            print(_info_msg)
+            log_info(job_inst_id=self.job_inst_id
+                     , task_name=f"{self.job_task_name}"
+                     , info_message=_info_msg
+                     , context=f"{inspect.currentframe().f_code.co_name}"
+                     )
+        else:
+            print("Bad record encountered but no DLQ configured:", record)
 
     def _flush_to_db(self, topic:str = None):
         """
@@ -127,10 +158,11 @@ class KafkaETLConsumer:
         """
         log_job_task(self.job_inst_task_id, "running")  # [metadata].[job_inst_task] table
 
-        print(f"Starting Kafka consumer group_id | {self.group_id} | and  max_messages per topic | {max_messages}")
+        _info_msg = f"Starting Kafka consumer group_id || {self.group_id} || and  max_messages per topic || {max_messages}"
+        print(_info_msg)
         log_info(job_inst_id=self.job_inst_id
                  , task_name=f"{self.job_task_name}"
-                 , info_message=f"Starting Kafka consumer group_id | {self.group_id} | and  max_messages per topic | {max_messages}"
+                 , info_message=_info_msg
                  , context=f"{inspect.currentframe().f_code.co_name}"
                  )
           
@@ -145,34 +177,51 @@ class KafkaETLConsumer:
         # Extract actual assigned topics
         #  self.consumer.assignment() returns TopicPartition objects that are assigned after polling
         assigned_topics = set(tp.topic for tp in self.consumer.assignment())
-        print("Assigned topics:", assigned_topics)
+
+        _info_msg = "Assigned topics:", assigned_topics
+        print(_info_msg)
 
         # loop one-by one through all messages in consumer:
         try:
             for msg in self.consumer:
-                topic = msg.topic
+                try:
+                    topic = msg.topic
 
-                 # Skip topics already completed
-                if topic in completed_topics:
-                    continue
+                     # Skip topics already completed
+                    if topic in completed_topics:
+                        continue
 
-                record = self._enhance_message(msg.value, self.group_id, topic)
-                self.buffer.append(record)
-                counts[topic] += 1  # Track message count per topic
+                    record = self._enhance_message(msg.value, self.group_id, topic)
+                    if self.is_valid(record):
+                        self.buffer.append(record)
+                    else:
+                        # send to DLQ
+                        self.handle_bad_message(record, error_reason="Validation failed: null or empty fields")
 
-                if len(self.buffer) >= self.batch_size:
-                    self._flush_to_db(topic)
+                    counts[topic] += 1  # Track message count per topic
+
+                    if len(self.buffer) >= self.batch_size:
+                        self._flush_to_db(topic)
 
 
-                # Mark topic as completed if it reached the limit
-                if max_messages and counts[topic] >= max_messages:
-                    completed_topics.add(topic)
-                    print(f"Reached max_messages for topic: {topic}")
-                    log_info(job_inst_id=self.job_inst_id
-                             , task_name=f"{self.job_task_name}"
-                             , info_message=f"Reached max_messages for topic: {topic}"
-                             , context=f"{inspect.currentframe().f_code.co_name}"
-                             )
+                    # Mark topic as completed if it reached the limit
+                    if max_messages and counts[topic] >= max_messages:
+                        completed_topics.add(topic)
+
+                        _info_msg = f"Topic: {topic} || Reached max_messages of {max_messages} "
+                        print(_info_msg)
+                        log_info(job_inst_id=self.job_inst_id
+                                 , task_name=f"{self.job_task_name}"
+                                 , info_message=_info_msg
+                                 , context=f"{inspect.currentframe().f_code.co_name}"
+                                 )
+                except Exception as e:
+                    # Catch processing or deserialization errors
+                    error_info = {
+                        "original_message": str(msg.value),
+                        "error_reason": str(e)
+                    }
+                    self.handle_bad_message(error_info, error_reason="Processing error")
 
                 # Check if all topics are done
                 if completed_topics == assigned_topics:
@@ -187,6 +236,10 @@ class KafkaETLConsumer:
             self._flush_to_db()  # Final flush after loop
         finally:
             self.consumer.close()
+            if self.producer:
+                self.producer.flush()
+                self.producer.close()
+
             _info_msg = f"Kafka consumer closed. Message count: {dict(counts)}"
             print(_info_msg)
             log_info(job_inst_id=self.job_inst_id

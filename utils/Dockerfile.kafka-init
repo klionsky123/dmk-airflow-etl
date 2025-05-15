@@ -1,0 +1,21 @@
+﻿# NOTE: To apply changes in the Dockerfile — such as adding RUN pip install --no-cache-dir pandas==2.1.4 — you must rebuild the image. 
+# Otherwise, docker-compose up -d will simply restart containers using the existing image without applying the change.
+
+# For airflow
+# docker build -t custom-airflow:2.8.1 -f Dockerfile .
+
+# For Kafka-topic-init (from the utils folder)
+# docker build -t kafka-topic-init -f utils/Dockerfile.kafka-init utils/
+
+# This project has 2 Dockerfile: Dockerfile → for the main/default image (Airflow)
+#                                utils/Dockerfile.kafka-init → for the Kafka DLQ topic creator script
+
+# utils/Dockerfile.kafka-init
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY kafka_dlq_topic.py .
+
+RUN pip install kafka-python
+
+CMD ["python", "kafka_dlq_topic.py"]

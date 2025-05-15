@@ -142,6 +142,7 @@ class JobTask:
                 bootstrap_servers=self.bootstrap,
                 group_id=self.group_id,
                 sql_table=self.target_table,
+                dlq_topic="dead-letter-que",
                 batch_size=self.kafka_batch_record_size, # Number of records to buffer before writing to the database
                 row = self.row  #job task data for db logging
 
