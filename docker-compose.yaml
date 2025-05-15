@@ -77,7 +77,7 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - "Z:/bulk_files:/mnt/sql_shared/bulk_files:rw"
-    - //192.168.86.96/shared/bulk_files:/opt/airflow/tmp/incoming
+    - //ip_address/shared/bulk_files:/opt/airflow/tmp/incoming
     - ${AIRFLOW_PROJ_DIR:-.}/utils:/opt/airflow/utils
     - ${AIRFLOW_PROJ_DIR:-.}/tmp:/opt/airflow/tmp
     - ${AIRFLOW_PROJ_DIR:-.}/tmp/api_responses:/opt/airflow/tmp/api_responses
@@ -140,7 +140,7 @@ services:
        - C:/Users/skyli/Projects/airflow-docker/tmp:/opt/airflow/tmp
        - C:/Users/skyli/Projects/airflow-docker/tmp/api_responses:/opt/airflow/tmp/api_responses
        - "Z:/bulk_files:/mnt/sql_shared/bulk_files:rw"
-       - //192.168.86.96/shared/bulk_files:/opt/airflow/tmp/incoming
+       - //ip_address/shared/bulk_files:/opt/airflow/tmp/incoming
     build:
         context: .
         dockerfile: Dockerfile
@@ -165,7 +165,7 @@ services:
        - C:/Users/skyli/Projects/airflow-docker/tmp:/opt/airflow/tmp
        - C:/Users/skyli/Projects/airflow-docker/tmp/api_responses:/opt/airflow/tmp/api_responses
        - "Z:/bulk_files:/mnt/sql_shared/bulk_files:rw"
-       - //192.168.86.96/shared/bulk_files:/opt/airflow/tmp/incoming
+       - //ip_address/shared/bulk_files:/opt/airflow/tmp/incoming
   airflow-worker:
     <<: *airflow-common
     command: celery worker
@@ -195,7 +195,7 @@ services:
        - C:/Users/skyli/Projects/airflow-docker/tmp:/opt/airflow/tmp
        - C:/Users/skyli/Projects/airflow-docker/tmp/api_responses:/opt/airflow/tmp/api_responses
        - "Z:/bulk_files:/mnt/sql_shared/bulk_files:rw"
-       - //192.168.86.96/shared/bulk_files:/opt/airflow/tmp/incoming
+       - //ip_address/shared/bulk_files:/opt/airflow/tmp/incoming
   airflow-triggerer:
     <<: *airflow-common
     command: triggerer
