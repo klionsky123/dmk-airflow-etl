@@ -55,7 +55,7 @@ class KafkaETLConsumer:
              self.consumer.subscribe(pattern=self.topic_pattern) # e.g., pattern=r'test-.*'
 
         _info_msg =(f"KafkaConsumer initialized successfully; "
-                    f"topic_pattern| {self.topic_pattern} | bootstrap_servers| {self.bootstrap_servers}")
+                    f"topic_pattern|| {self.topic_pattern} || bootstrap_servers|| {self.bootstrap_servers}")
 
         log_info(job_inst_id=self.job_inst_id
                  , task_name=f"{self.job_task_name}"
@@ -127,7 +127,7 @@ class KafkaETLConsumer:
             df.to_sql(name=table, schema=tbl_schema, con=self.engine, if_exists="append", index=False)
             
             if topic:
-                info_msg = f"Topic | {topic} | Flushed {len(self.buffer)} records to | {self.sql_table} "
+                info_msg = f"Topic || {topic} || Flushed {len(self.buffer)} records to || {self.sql_table} "
             else:
                 info_msg = f"Flushed {len(self.buffer)} records to | {self.sql_table} "
                 
@@ -208,7 +208,7 @@ class KafkaETLConsumer:
                     if max_messages and counts[topic] >= max_messages:
                         completed_topics.add(topic)
 
-                        _info_msg = f"Topic: {topic} || Reached max_messages of {max_messages} "
+                        _info_msg = f"Topic || {topic} || Reached max_messages of {max_messages} "
                         print(_info_msg)
                         log_info(job_inst_id=self.job_inst_id
                                  , task_name=f"{self.job_task_name}"

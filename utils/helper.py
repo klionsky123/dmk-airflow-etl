@@ -144,9 +144,34 @@ def complete_job(job_inst_id: int, success: bool = True):
             trans.rollback()
             raise Exception(f"Transaction failed: {e}")
 
+from sqlalchemy import text
+
+def get_all_job_inst_tasks_as_list(job_inst_id: int, etl_step: str):
+    """
+    # Use case|| MULTIPLE SQL EXTRACTS FROM MULTIPLE TABLES ||
+    # Return all job instance tasks as a list of dictionaries for task mapping.
+    """
+    engine = get_engine_for_metadata()
+
+    with engine.connect() as connection:
+        try:
+            result = connection.execute(
+                text("""
+                    EXEC [metadata].[sp_get_job_inst_task] 
+                        @p_job_inst_id = :param1,
+                        @p_etl_step = :param2
+                """),
+                {"param1": job_inst_id, "param2": etl_step}
+            )
+
+            return [dict(row) for row in result]  # 👈 Fully materialize and return list
+
+        except Exception as e:
+            raise Exception(f"Transaction failed: {e}")
 
 def get_all_job_inst_tasks(job_inst_id: int, etl_step: str):
     """
+    # Use case|| STREAMING ||
     # Get all tasks for the current job instance
     * a generator function:  yield each row as a dictionary instead of building and returning a list.
     # @p_etl_step ="E", for extract
