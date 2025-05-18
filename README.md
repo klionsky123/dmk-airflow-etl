@@ -50,9 +50,9 @@ It provides support for
 - `Extract`-only or (`Transform` & `Load`)-only job structures.
 - Storage of `Extract` sql queries as well as the tracking of the stored procs (aka 'scripts') used in `Transform` & `Load`.
 - Full and Incremental `Extracts` based on incremental dates.
-- `Large vs. Small Data Strategies` resulting in the different approaches for performance.
+- `Large vs. Small Data` metadata switches resulting in the different approaches for performance (via python layer)
 - Task-level activation on/off-switches without modifying the overall job
-- Configurable cleanup for the temp structures (staging tables, flat files) via metadata on/off-switches; helpful for debugging and research.
+- Configurable cleanup for the temp structures (extract temp tables, flat files) via metadata on/off-switches
 
 
 ### ETL-Metadata-tables schema 
