@@ -42,7 +42,8 @@ This framework provides a metadata-driven orchestration layer integrated with Ap
 
 ## 🧠 ETL-Metadata-framework Database Features
 
-ETL-Metadata-framework is more than just a storage layer for job configs. It also includes Extract SQL queries, tables column mappings and more.  .
+ETL-Metadata-framework is more than just a storage layer for job configs. It also includes Extract SQL queries, tables column mappings and more.
+
 It provides support for 
 - `Data Lineage` & Traceability (source systems, intermediate steps, and target destinations).
 - Both informational and error db-logging tied to each job execution id.
