@@ -28,11 +28,11 @@ This framework provides a metadata-driven orchestration layer integrated with Ap
 ## Project Notes
 
 - Microsoft SQL Server, installed on a separate machine, serves as the destination database and contains:
-  1. ETL metadata tables (in a dedicated metadata schema)
-  2. Both staging and production data tables
+  1. Custom metadata tables (in a dedicated metadata schema)
+  2. Both 'Stage' and 'Production' data tables
 - Apache Airflow, running in Docker, is used for job scheduling and ETL orchestration.
-- The Extract step is implemented using Python pandas, sqlalchemy and SQL Server stored procs.
-- The Transform and Load steps are handled via SQL stored procedures.
+- The `Extract` step is implemented via Python pandas, sqlalchemy and SQL Server stored procs.
+- Both `Transform` and `Load` steps are handled via SQL stored procedures.
   
 ### Project Architecture: 
 
@@ -42,16 +42,17 @@ This framework provides a metadata-driven orchestration layer integrated with Ap
 
 ## 🧠 ETL-Metadata-framework Database Features
 
-ETL meatadata tables include job & job tasks definitions, clients/data sources configurations as well as logs.
-They provide support for 
-- Full and Incremental `Extracts` based on incremental dates.
+ETL-Metadata-framework is more than just a storage layer for job configs. It also includes Extract SQL queries, tables column mappings and more.  .
+It provides support for 
 - `Data Lineage` & Traceability (source systems, intermediate steps, and target destinations).
+- Both informational and error db-logging tied to each job execution id.
 - `Extract`-only or (`Transform` & `Load`)-only job structures.
 - Storage of `Extract` sql queries as well as the tracking of the stored procs (aka 'scripts') used in `Transform` & `Load`.
+- Full and Incremental `Extracts` based on incremental dates.
 - `Large vs. Small Data Strategies` resulting in the different approaches for performance.
 - Task-level activation on/off-switches without modifying the overall job
 - Configurable cleanup for the temp structures (staging tables, flat files) via metadata on/off-switches; helpful for debugging and research.
-- Both informational and error db-logging tied to each job execution id.
+
 
 ### ETL-Metadata-tables schema 
 
