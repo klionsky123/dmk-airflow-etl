@@ -59,10 +59,6 @@ It provides support for
 
 <img src="diagrams/metadata-db-schema.jpg" alt="Example" width="500" hight="300"/>
 
-### Covered Use cases:
-
-<img src="diagrams/Covered-ETL-Use-cases2.jpg" alt="Example" width="500" hight="100"/>
-
 ### AirFlow graph:
 
 <img src="diagrams/Airflow-graph.jpg" alt="Example" width="500" hight="300"/>
