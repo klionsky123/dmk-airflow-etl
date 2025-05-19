@@ -3,11 +3,12 @@ import os
 import sys
 from airflow import DAG
 from airflow.decorators import task, task_group
-
+from airflow.operators.email import EmailOperator
+from airflow.utils.email import send_email
+from airflow.utils.trigger_rule import TriggerRule
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../utils')))
-# From the module helper.py, inside the package utils, import these functions:
 from helper import (get_engine_for_metadata, log_error, log_info, log_job_task, complete_job
-, get_all_job_inst_tasks, create_job_inst_and_log, get_job_inst_info)
+, get_all_job_inst_tasks, create_job_inst_and_log, get_job_inst_info, get_job_config)
 from process_task import JobTask
 
 sys.path.append('/opt/airflow/utils')
@@ -126,16 +127,21 @@ def etl_group(job_data: dict):
     extracted >> transformed >> loaded
 
 
+#####################################################
 # Step 3: Define the DAG
 with DAG(
         dag_id="ClientB_FLAT_FILE_ETL_dag",
         schedule="0 9 * * *",
         start_date=datetime(2023, 4, 1),
         catchup=False,
-        tags=["etl", "sql", "api", "files", "parquet", "csv"],
+        tags=["etl", "csv"],
 ) as dag:
-    # First task: Fetch job parameters
-    p_job_id = 3  # 'ClientB_FLAT_FILE_ETL' job_id
+    # get job_id by job name:
+    job_config = get_job_config("ClientB_FLAT_FILE_ETL")
+    p_job_id = job_config.get("job_id")
+    send_notification = job_config.get("send_notification", False)  # boolean flag
+
+    # set job instance id:
     p_job_inst_id = start_job(p_job_id)
     p_job_data = fetch_job_params(p_job_inst_id)
 
@@ -148,5 +154,28 @@ with DAG(
     # Define dependency: etl_group must finish before complete_job runs
     etl_tasks >> done
 
+    # Create email tasks if notifications are enabled
+    if send_notification:
 
+        send_success_email = EmailOperator(
+            task_id="send_success_email",
+            to="xxx@klionsky.org",
+            subject="✅ ETL Success: {{ dag.dag_id }}",
+            html_content="""
+                <h3>ETL Job Completed Successfully</h3>
+                <p><b>DAG:</b> {{ dag.dag_id }}</p>
+                <p><b>Execution Time:</b> {{ ts }}</p>
+            """,
+        )
+
+        @task(trigger_rule=TriggerRule.ONE_FAILED)
+        def send_failure_email():
+            send_email(
+                to="xxx@klionsky.org",
+                subject="❌ ETL Failed: {{ dag.dag_id }}",
+                html_content="<p>One or more tasks in the DAG failed. Check logs.</p>",
+            )
+
+        done >> send_success_email
+        etl_tasks >> send_failure_email()
 

@@ -127,7 +127,7 @@ with DAG(
     schedule="0 9 * * *",
     start_date=datetime(2023, 4, 1),
     catchup=False,
-    tags=["etl", "sql", "api", "files", "parquet", "csv"],
+    tags=["etl", "sql", "api"],
 ) as dag:
     # First task: Fetch job parameters
     p_job_id = 2  # 'OpenAlex_API_ETL' job_id
