@@ -2,6 +2,8 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 from airflow.hooks.base import BaseHook
+import inspect
+from typing import List, Dict
 
 """
 Connection to the metadata server
@@ -22,7 +24,8 @@ def get_engine_for_metadata():
 """
 Write to db log
 """
-def write_to_log(job_inst_id: int, task_name:str, task_status:str, error_message:str, context:str, is_error: bool):
+def write_to_log(job_inst_id: int, task_name:str, task_status:str,
+                 error_message:str, context:str, is_error: bool, logging_seq: int ):
     engine = get_engine_for_metadata()
     with engine.connect() as connection:
         trans = connection.begin()
@@ -35,9 +38,11 @@ def write_to_log(job_inst_id: int, task_name:str, task_status:str, error_message
                             @p_task_status = :param3,
                             @p_error_msg = :param4,
                             @p_context = :param5,
-                            @p_is_error = :param6
+                            @p_is_error = :param6,
+                            @p_logging_seq = :param7
                     """),
-                    {"param1": job_inst_id, "param2": task_name, "param3": task_status, "param4": error_message, "param5": context,"param6": is_error}
+                    {"param1": job_inst_id, "param2": task_name, "param3": task_status,
+                                "param4": error_message, "param5": context,"param6": is_error, "param7": logging_seq}
                 )
             trans.commit()
         
@@ -47,11 +52,13 @@ def write_to_log(job_inst_id: int, task_name:str, task_status:str, error_message
             raise Exception(f"Transaction failed: {e}")
 
 
-def log_error(job_inst_id: int, task_name:str, error_message:str, context:str):
-    write_to_log(job_inst_id, task_name, "failed", error_message, context, True)
+def log_error(job_inst_id: int, task_name:str, error_message:str
+              , context:str, logging_seq: int = 1):
+    write_to_log(job_inst_id, task_name, "failed", error_message, context, True, logging_seq)
       
-def log_info(job_inst_id: int, task_name:str, info_message:str, context:str, task_status: str ="running"):
-    write_to_log(job_inst_id, task_name, task_status, info_message, context, False)
+def log_info(job_inst_id: int, task_name:str, info_message:str
+             , context:str, task_status: str ="running", logging_seq: int =1):
+    write_to_log(job_inst_id, task_name, task_status, info_message, context,  False, logging_seq)
         
 def log_job_task(job_inst_task_id: int, task_status:str):
     """
@@ -144,7 +151,49 @@ def complete_job(job_inst_id: int, success: bool = True):
             trans.rollback()
             raise Exception(f"Transaction failed: {e}")
 
-from sqlalchemy import text
+def get_etl_jobs_list() -> List[Dict]:
+    """
+    # Return all jobs  as a list of dictionaries
+    """
+    engine = get_engine_for_metadata()
+
+    with engine.connect() as connection:
+        try:
+            result = connection.execute(
+                text("""
+                    EXEC [metadata].[sp_get_job_list] 
+                        @p_job_id = :param1,
+                        @p_job_type = :param2
+                """),
+                {"param1": 0, "param2": "ETL"}
+            )
+
+            return [dict(row) for row in result]  # 👈 Fully materialize and return list
+
+        except Exception as e:
+            raise Exception(f"Transaction failed: {e}")
+
+def get_job_config(job_name: str) -> Dict:
+    """
+    # Return job's DAG configuration
+    """
+    engine = get_engine_for_metadata()
+
+    with engine.connect() as connection:
+        try:
+            result = connection.execute(
+                text("""
+                    EXEC [metadata].[sp_get_job_by_name] 
+                        @p_job_name = :param1
+                """),
+                {"param1": job_name}
+            )
+
+            return dict(result.fetchone())
+
+        except Exception as e:
+            raise Exception(f"Transaction failed: {e}")
+
 
 def get_all_job_inst_tasks_as_list(job_inst_id: int, etl_step: str):
     """
@@ -260,16 +309,19 @@ def get_job_inst_info(job_inst_id: int)->dict:
             del_temp_data =data['del_temp_data']
             etl_steps = data['etl_steps']
             is_full_load = data['is_full_load']
+
+            _info_msg =f"Starting Job: {job_name} || ETL steps: {etl_steps} || Full load:  {is_full_load} "
+            print(_info_msg)
             log_info(job_inst_id, 'fetch_job_params'
-                     , f"Starting Job {job_name} with ETL steps as || {etl_steps} || and full load set to || {is_full_load} "
-                     , context="get_job_inst_info()")
+                     , _info_msg
+                     , context=f"{inspect.currentframe().f_code.co_name}", logging_seq = 2)
             return data
         else:
             log_error(
                 job_inst_id=job_inst_id,
                 task_name="fetch_job_params",
                 error_message=f"No job parameters found for job_inst_id: {job_inst_id}",
-                context="fetch_job_params()"
+                context=f"{inspect.currentframe().f_code.co_name}", logging_seq = 2
             )
             raise Exception(f"No job parameters found for job_inst_id: {job_inst_id}")
 
