@@ -64,7 +64,7 @@ It provides support for
 
 <img src="diagrams/metadata-db-schema.jpg" alt="Example" width="500" hight="300"/>
 
-### AirFlow graph:
+### Sample job workflow (AirFlow graph):
 
 <img src="diagrams/Airflow-graph.jpg" alt="Example" width="500" hight="300"/>
 
