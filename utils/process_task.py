@@ -113,9 +113,9 @@ class JobTask:
                     else:
                         print(f"[{self.job_inst_id}] Unknown connection_type: {self.conn_type}")
                 elif self.etl_step == "T":
-                        self._transform_mssql()
+                        self._transform_mssql(logging_step) #need logging_step to order parallel processing log entries
                 elif self.etl_step == "L":
-                        self._load_mssql()
+                        self._load_mssql(logging_step)      #need logging_step to order parallel processing log entries
 
         except Exception as e:
             print(f"[{self.job_inst_id}] Extract task [{self.job_task_name}] failed: {e}")
@@ -201,13 +201,12 @@ class JobTask:
                  , context=f"{inspect.currentframe().f_code.co_name}"
                  , logging_seq=_logging_step + 3
                  )
-
-        # if stored procedure :
+        # if stored procedure (STAGE database):
         if self.sql_type.lower() == "proc":
 
             # a SQLAlchemy-compatible URL: "mssql+pyodbc://uname:pass@ip_address/db_name?driver=ODBC+Driver+17+for+SQL+Server"
             # (Replaced spaces in the driver name with + )
-            _engine_src = create_engine(f"mssql+pyodbc:///?odbc_connect={self.conn_str}")  # Source
+            _engine_src = self.engine_tgt  # Stage db
 
             print(f"source || {_engine_src}")
             log_info(job_inst_id=self.job_inst_id
@@ -252,50 +251,58 @@ class JobTask:
         else:
             # panda style conn_str: 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=xxx;DATABASE=xxx;UID=xxx;PWD=xxx'
             # no +
-            #_engine_src = create_engine(f"{self.conn_str}")  # Source
             _engine_src = self._get_engine_for_MsSql()
 
-            print(f"source || {_engine_src}")
+            print(f"Source || {_engine_src}")
             log_info(job_inst_id=self.job_inst_id
                      , task_name=self.job_task_name
                      , info_message=f"source || {_engine_src}"
                      , context=f"{inspect.currentframe().f_code.co_name}"
                      , logging_seq=_logging_step + 5
                      )
+
             # add incremental date if it is not a full load:
             if not self.is_full_load:
                 sql_text = f"{self.sql_text}  and {self.incr_column} >= '{self.incr_date}'"
             else:
                 sql_text = self.sql_text
-            print(f"SQL Statement || {sql_text}")
+
             try:
                 with _engine_src.connect() as conn_src:
 
                     df = pd.read_sql(sql_text, con=conn_src.execution_options(stream_results=True))
+
                     if self.is_large:
                         # Write to CSV
-                        # file_path = f"//XXX.XXX.XX.XX/shared/bulk_files/{target_table.replace('.', '_')}_{timestamp}.csv"
 
-                        filename = f"{self.target_table.replace('.', '_')}_{timestamp}.csv"
+                        filename = f"{self.target_table.split('.')[-1]}.csv" #testing
+                        #filename = f"{filename.replace('.', '_')}_{timestamp}.csv"
 
-                        # This is inside the container, but it's mapped to the Windows share
-                        docker_shared_path = "/mnt/sql_shared/bulk_files/"
+                        # This is inside the container, and it's mapped to the Windows share
+                        docker_shared_path = "/opt/airflow/tmp/"
                         file_path = os.path.join(docker_shared_path, filename)
 
                         # Write CSV to shared folder
-                        df.to_csv(file_path, index=False)
+                        # testing
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        # testing
+                        df.to_csv(file_path, index=False, sep='|', encoding='CP1252')
 
                         # The path as seen by SQL Server (UNC path)
                         sql_server_path = f"\\\\192.168.86.96\\shared\\bulk_files\\{filename}"
 
                         # Append a query to capture the row count after the bulk insert
+                        # ROWTERMINATOR = '0x0A' ensures UNIX-style line endings \n are correctly parsed.
+                        # CODEPAGE = 'ACP' handles ANSI encoding. Use '65001' if your file is UTF-8.
                         bulk_insert_sql = f"""
                                BULK INSERT {self.target_table}
                                FROM '{sql_server_path}'
                                WITH (
                                    FIRSTROW = 2,
-                                   FIELDTERMINATOR = ',',
-                                   ROWTERMINATOR = '\\n',
+                                   FIELDTERMINATOR = '|',
+                                   ROWTERMINATOR = '0x0A',
+                                   CODEPAGE = 'ACP', /* assumes ANSI / cp1252 */
                                    TABLOCK
                                );
                            """
@@ -433,7 +440,7 @@ class JobTask:
 
 
 
-    def _transform_mssql(self) :
+    def _transform_mssql(self,  _logging_step  = 1) :
 
         """
         Purpose:
@@ -448,6 +455,7 @@ class JobTask:
                  , task_name=f"{self.job_task_name}"
                  , info_message=f"target || {self.engine_tgt}"
                  , context=f"{inspect.currentframe().f_code.co_name}"
+                 , logging_seq=_logging_step + 2
                  )
         print(f"target || {self.engine_tgt}")
 
@@ -458,14 +466,16 @@ class JobTask:
 
                         proc_name = self.sql_text
 
-                        sql_text = f"""
-                                        EXEC {proc_name}  
-                                            @p_job_inst_id = :param1,
-                                            @p_job_inst_task_id = :param2
-                                    """
+                        _sql_text = f"""
+                                           EXEC {self.sql_text}  
+                                               @p_job_inst_id = :param1,
+                                               @p_job_inst_task_id = :param2,
+                                               @p_logging_seq = :param3
+                                       """
                         connection.execute(
-                            text(sql_text),
-                            {"param1": self.job_inst_id, "param2": self.job_inst_task_id}
+                            text(_sql_text),
+                            {"param1": self.job_inst_id,
+                             "param2": self.job_inst_task_id, "param3": _logging_step + 3}
                         )
 
                         trans.commit()
@@ -484,11 +494,12 @@ class JobTask:
                       , task_name=f"{self.job_task_name}"
                       , error_message=str(e)
                       , context=f"{inspect.currentframe().f_code.co_name}"
+                      , logging_seq=_logging_step + 2
                       )
             log_job_task(self.job_inst_task_id, "failed")  # [metadata].[job_inst_task] table
             raise
 
-    def _load_mssql(self) :
+    def _load_mssql(self,  _logging_step  = 1) :
 
         """
         Purpose:
@@ -504,6 +515,7 @@ class JobTask:
                  , task_name=f"{self.job_task_name}"
                  , info_message=f"target || {self.engine_tgt}"
                  , context=f"{inspect.currentframe().f_code.co_name}"
+                 , logging_seq=_logging_step + 2
                  )
         print(f"target || {self.engine_tgt}")
 
@@ -514,14 +526,16 @@ class JobTask:
 
                         proc_name = self.sql_text
 
-                        sql_text = f"""
-                                        EXEC {proc_name}  
-                                            @p_job_inst_id = :param1,
-                                            @p_job_inst_task_id = :param2
-                                    """
+                        _sql_text = f"""
+                                           EXEC {self.sql_text}  
+                                               @p_job_inst_id = :param1,
+                                               @p_job_inst_task_id = :param2,
+                                               @p_logging_seq = :param3
+                                       """
                         connection.execute(
-                            text(sql_text),
-                            {"param1": self.job_inst_id, "param2": self.job_inst_task_id}
+                            text(_sql_text),
+                            {"param1": self.job_inst_id,
+                             "param2": self.job_inst_task_id, "param3": _logging_step + 3}
                         )
 
                         trans.commit()
@@ -539,6 +553,7 @@ class JobTask:
                       , task_name=f"{self.job_task_name}"
                       , error_message=str(e)
                       , context=f"{inspect.currentframe().f_code.co_name}"
+                      , logging_seq=_logging_step + 2
                       )
             log_job_task(self.job_inst_task_id, "failed")  # [metadata].[job_inst_task] table
             raise
