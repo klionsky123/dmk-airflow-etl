@@ -1,4 +1,19 @@
-use dmk_prod_stage
+use dmk_prod_db
+go
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.schemas
+    WHERE name = 'conformed'
+)
+BEGIN
+    EXEC('CREATE SCHEMA conformed')
+END
+go
+
+
+
+use dmk_stage_db
 go
 
 /*
@@ -185,14 +200,32 @@ create table metadata.tbl (
 
 
 go
+/*
+Airflow Tagging Convention
+
+Tag Type		Example							Description
+------------------------------------------------------------------------------------------
+System			etl, api, ml, dbt, spark		What kind of workload or tool the DAG uses.
+Data Domain		finance, sales, hr, customer	What area of the business the DAG supports.
+Environment		dev, staging, prod				Deployment stage — important for managing test vs live runs.
+Priority		critical, daily, adhoc			How important/frequent the DAG is.
+Team/Owner		team-data, team-ml, team-bi		Helps identify responsibility for the DAG.
+
+*/
 create table metadata.job(
  job_id int identity not null 
 ,job_name varchar(128) not null
+,job_group_name varchar(128) null
+,job_group_seq int null 
 ,is_etl bit not null default 1
 ,etl_steps varchar(4) not null default 'NONE' check (etl_steps in ('NONE', 'ETL','E','TL'))
 ,is_full_load bit not null default 1
 ,del_temp_data bit not null default 1 /* for all tasks to conditionally delete temp table (for small datasets)/CSV file (for large datasets) */
 ,job_type varchar(8) NULL default 'etl' check (job_type in ('etl', 'non-etl'))
+,is_active bit not null default 1
+,airflow_schedule varchar(64) not null default '0 9 * * *'
+,airflow_tags varchar(32) null
+,send_notification bit default 0
 ,date_created smalldatetime not null default getdate()
 ,date_updated smalldatetime null
 ,CONSTRAINT metadata_job_PK PRIMARY KEY (job_id)
@@ -273,8 +306,9 @@ CREATE TABLE metadata.log_dtl (
     task_status varchar(20) null,  -- success, failed, skipped
 	context varchar(1000) null,
     error_msg varchar(max) null,
+	logging_seq int null,
 	is_error bit not null default 0,
-    created_at smalldatetime not null default getdate()
+    created_at datetime not null default getdate()
 );
 go
 
