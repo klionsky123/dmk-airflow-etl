@@ -6,7 +6,7 @@
 
 This framework provides a metadata-driven orchestration layer integrated with Apache Airflow, enabling scalable, maintainable, and auditable ETL processes. It abstracts job definitions, task logic, source configurations, and execution states into centralized metadata tables, forming the "brain" of the system.
 
-Watch the Introduction Video on YouTube (5 min):
+### Watch the Introduction Video on YouTube (5 min):
 
 [![DMK Airflow ETL Video](https://img.youtube.com/vi/PLd0rHZdO3s/0.jpg)](https://www.youtube.com/watch?v=PLd0rHZdO3s)
 
