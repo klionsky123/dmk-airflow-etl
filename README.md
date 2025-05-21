@@ -6,6 +6,8 @@
 
 This framework provides a metadata-driven orchestration layer integrated with Apache Airflow, enabling scalable, maintainable, and auditable ETL processes. It abstracts job definitions, task logic, source configurations, and execution states into centralized metadata tables, forming the "brain" of the system.
 
+[Watch the Introduction Video](https://www.youtube.com/watch?v=PLd0rHZdO3s) (5 min)
+
 ## ✅ Main Features
 
 - Contains a fully functional, stand-alone set of metadata tables, stored procedures, and python modules to support ETL processes.
