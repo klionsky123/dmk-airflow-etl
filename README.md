@@ -64,9 +64,9 @@ It provides support for
 
 <img src="diagrams/metadata-db-schema.jpg" alt="Example" width="500" hight="300"/>
 
-### Sample job workflow (AirFlow graph):
+### Documentation:
 
-<img src="diagrams/Airflow-graph.jpg" alt="Example" width="500" hight="300"/>
+[AirFlow-ETL-Presentation](https://github.com/klionsky123/dmk-airflow-etl/blob/main/diagrams/AirFlow-ETL-Presentation.pdf)
 
 ---
 
