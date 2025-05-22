@@ -60,7 +60,8 @@ It provides support for
 - Configurable cleanup for the temp structures (extract temp tables, flat files) via metadata on/off-switches
 
 
-### ETL-Metadata-tables schema 
+### ETL-Metadata-framework data model.
+A fully functional, stand-alone set of metadata tables and stored procedures to support ETL processes on any platform.
 
 <img src="diagrams/metadata-db-schema.jpg" alt="Example" width="500" hight="300"/>
 
